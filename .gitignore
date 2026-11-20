@@ -1,0 +1,7 @@
+bin/
+obj/
+cfg/
+snap/
+nvram/
+Roms/*
+!Roms/.gitkeep
