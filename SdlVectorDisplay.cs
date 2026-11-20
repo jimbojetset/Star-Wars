@@ -6,6 +6,7 @@ namespace StarWars;
 
 public sealed class SdlVectorDisplay : IDisposable
 {
+    private const float MonitorAspectRatio = 4f / 3f;
     private const byte YokeCenter = 0x80;
 
     private readonly nint _window;
@@ -15,6 +16,11 @@ public sealed class SdlVectorDisplay : IDisposable
     private bool _yokeRight;
     private bool _yokeUp;
     private bool _yokeDown;
+    private bool _mouseYokeActive;
+    private bool _spaceTriggerPressed;
+    private bool _rightShiftTriggerPressed;
+    private bool _leftMouseTriggerPressed;
+    private bool _rightMouseTriggerPressed;
     private bool _disposed;
 
     public SdlVectorDisplay()
@@ -33,6 +39,10 @@ public sealed class SdlVectorDisplay : IDisposable
 
         SDL.SetRenderVSync(_renderer, 1);
         SDL.HideCursor();
+        if (SDL.GetWindowSize(_window, out int windowWidth, out int windowHeight))
+        {
+            SDL.WarpMouseInWindow(_window, windowWidth * 0.5f, windowHeight * 0.5f);
+        }
 
         var audioSpec = new SDL.AudioSpec
         {
@@ -89,6 +99,21 @@ public sealed class SdlVectorDisplay : IDisposable
                 continue;
             }
 
+            if (machine is not null
+                && currentEvent.Type == (uint)SDL.EventType.MouseMotion)
+            {
+                SetMouseYoke(machine, currentEvent.Motion.X, currentEvent.Motion.Y);
+                continue;
+            }
+
+            bool mouseButtonDown = currentEvent.Type == (uint)SDL.EventType.MouseButtonDown;
+            bool mouseButtonUp = currentEvent.Type == (uint)SDL.EventType.MouseButtonUp;
+            if (machine is not null && (mouseButtonDown || mouseButtonUp))
+            {
+                SetMouseButton(machine, currentEvent.Button.Button, mouseButtonDown);
+                continue;
+            }
+
             bool keyDown = currentEvent.Type == (uint)SDL.EventType.KeyDown;
             bool keyUp = currentEvent.Type == (uint)SDL.EventType.KeyUp;
             if (!keyDown && !keyUp)
@@ -120,15 +145,19 @@ public sealed class SdlVectorDisplay : IDisposable
         switch (key)
         {
             case SDL.Keycode.Left:
+                _mouseYokeActive = false;
                 _yokeLeft = pressed;
                 break;
             case SDL.Keycode.Right:
+                _mouseYokeActive = false;
                 _yokeRight = pressed;
                 break;
             case SDL.Keycode.Up:
+                _mouseYokeActive = false;
                 _yokeUp = pressed;
                 break;
             case SDL.Keycode.Down:
+                _mouseYokeActive = false;
                 _yokeDown = pressed;
                 break;
             case SDL.Keycode.C:
@@ -144,10 +173,12 @@ public sealed class SdlVectorDisplay : IDisposable
                 machine.RightThumbPressed = pressed;
                 break;
             case SDL.Keycode.Space:
-                machine.LeftTriggerPressed = pressed;
+                _spaceTriggerPressed = pressed;
+                UpdateTriggers(machine);
                 break;
             case SDL.Keycode.RShift:
-                machine.RightTriggerPressed = pressed;
+                _rightShiftTriggerPressed = pressed;
+                UpdateTriggers(machine);
                 break;
             case SDL.Keycode.A:
                 machine.AuxiliaryCoinPressed = pressed;
@@ -166,8 +197,62 @@ public sealed class SdlVectorDisplay : IDisposable
 
     private void UpdateYoke(StarWarsMachine machine, double elapsedSeconds)
     {
+        if (_mouseYokeActive)
+        {
+            return;
+        }
+
         machine.YokeYaw = MoveAxis(machine.YokeYaw, _yokeLeft, _yokeRight, elapsedSeconds, 360);
         machine.YokePitch = MoveAxis(machine.YokePitch, _yokeDown, _yokeUp, elapsedSeconds, 500);
+    }
+
+    private void SetMouseYoke(StarWarsMachine machine, float x, float y)
+    {
+        if (_yokeLeft || _yokeRight || _yokeUp || _yokeDown
+            || !SDL.GetWindowSize(_window, out int windowWidth, out int windowHeight))
+        {
+            return;
+        }
+
+        GetMonitorViewport(
+            windowWidth,
+            windowHeight,
+            out float viewportX,
+            out float viewportY,
+            out float viewportWidth,
+            out float viewportHeight);
+
+        float yaw = Math.Clamp((x - viewportX) / viewportWidth, 0f, 1f);
+        float pitch = 1f - Math.Clamp((y - viewportY) / viewportHeight, 0f, 1f);
+        machine.YokeYaw = (byte)MathF.Round(yaw * byte.MaxValue);
+        machine.YokePitch = (byte)MathF.Round(pitch * byte.MaxValue);
+        _mouseYokeActive = true;
+    }
+
+    private void SetMouseButton(StarWarsMachine machine, byte button, bool pressed)
+    {
+        if (button == SDL.ButtonLeft)
+        {
+            _leftMouseTriggerPressed = pressed;
+        }
+        else if (button == SDL.ButtonRight)
+        {
+            _rightMouseTriggerPressed = pressed;
+        }
+        else
+        {
+            return;
+        }
+
+        UpdateTriggers(machine);
+    }
+
+    private void UpdateTriggers(StarWarsMachine machine)
+    {
+        machine.LeftTriggerPressed = _spaceTriggerPressed || _leftMouseTriggerPressed;
+        machine.RightTriggerPressed = _spaceTriggerPressed
+            || _rightShiftTriggerPressed
+            || _rightMouseTriggerPressed;
     }
 
     private static byte MoveAxis(
@@ -194,6 +279,11 @@ public sealed class SdlVectorDisplay : IDisposable
         _yokeRight = false;
         _yokeUp = false;
         _yokeDown = false;
+        _mouseYokeActive = false;
+        _spaceTriggerPressed = false;
+        _rightShiftTriggerPressed = false;
+        _leftMouseTriggerPressed = false;
+        _rightMouseTriggerPressed = false;
         machine.YokePitch = YokeCenter;
         machine.YokeYaw = YokeCenter;
         machine.LeftCoinPressed = false;
@@ -217,11 +307,18 @@ public sealed class SdlVectorDisplay : IDisposable
         SDL.SetRenderDrawColor(_renderer, 0, 0, 0, 255);
         SDL.RenderClear(_renderer);
 
-        float scale = Math.Min(
-            outputWidth / (float)AtariStarWarsAvg.FieldWidth,
-            outputHeight / (float)AtariStarWarsAvg.FieldHeight);
-        float offsetX = (outputWidth - AtariStarWarsAvg.FieldWidth * scale) * 0.5f;
-        float offsetY = (outputHeight - AtariStarWarsAvg.FieldHeight * scale) * 0.5f;
+        GetMonitorViewport(
+            outputWidth,
+            outputHeight,
+            out float offsetX,
+            out float offsetY,
+            out float viewportWidth,
+            out float viewportHeight);
+
+        // The AVG's 250 by 280 visible coordinates are deflected across a 4:3 CRT;
+        // treating those coordinates as square pixels makes circles tall and narrow.
+        float scaleX = viewportWidth / AtariStarWarsAvg.FieldWidth;
+        float scaleY = viewportHeight / AtariStarWarsAvg.FieldHeight;
 
         foreach (VectorSegment vector in vectors)
         {
@@ -231,14 +328,34 @@ public sealed class SdlVectorDisplay : IDisposable
             byte blue = (byte)MathF.Round(vector.Blue * brightness);
             SDL.SetRenderDrawColor(_renderer, red, green, blue, 255);
 
-            float startX = offsetX + vector.StartX / 65536f * scale;
-            float startY = offsetY + vector.StartY / 65536f * scale;
-            float endX = offsetX + vector.EndX / 65536f * scale;
-            float endY = offsetY + vector.EndY / 65536f * scale;
+            float startX = offsetX + vector.StartX / 65536f * scaleX;
+            float startY = offsetY + vector.StartY / 65536f * scaleY;
+            float endX = offsetX + vector.EndX / 65536f * scaleX;
+            float endY = offsetY + vector.EndY / 65536f * scaleY;
             SDL.RenderLine(_renderer, startX, startY, endX, endY);
         }
 
         SDL.RenderPresent(_renderer);
+    }
+
+    private static void GetMonitorViewport(
+        int outputWidth,
+        int outputHeight,
+        out float x,
+        out float y,
+        out float width,
+        out float height)
+    {
+        width = outputWidth;
+        height = width / MonitorAspectRatio;
+        if (height > outputHeight)
+        {
+            height = outputHeight;
+            width = height * MonitorAspectRatio;
+        }
+
+        x = (outputWidth - width) * 0.5f;
+        y = (outputHeight - height) * 0.5f;
     }
 
     public void QueueAudio(ReadOnlySpan<float> samples)
