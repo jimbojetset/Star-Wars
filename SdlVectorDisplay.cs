@@ -7,6 +7,7 @@ namespace StarWars;
 public sealed class SdlVectorDisplay : IDisposable
 {
     private const float MonitorAspectRatio = 4f / 3f;
+    private const float MouseYokeSensitivity = 1.5f;
     private const byte YokeCenter = 0x80;
 
     private readonly nint _window;
@@ -222,8 +223,10 @@ public sealed class SdlVectorDisplay : IDisposable
             out float viewportWidth,
             out float viewportHeight);
 
-        float yaw = Math.Clamp((x - viewportX) / viewportWidth, 0f, 1f);
-        float pitch = 1f - Math.Clamp((y - viewportY) / viewportHeight, 0f, 1f);
+        float mouseX = (x - viewportX) / viewportWidth;
+        float mouseY = (y - viewportY) / viewportHeight;
+        float yaw = Math.Clamp(0.5f + (mouseX - 0.5f) * MouseYokeSensitivity, 0f, 1f);
+        float pitch = Math.Clamp(0.5f - (mouseY - 0.5f) * MouseYokeSensitivity, 0f, 1f);
         machine.YokeYaw = (byte)MathF.Round(yaw * byte.MaxValue);
         machine.YokePitch = (byte)MathF.Round(pitch * byte.MaxValue);
         _mouseYokeActive = true;
