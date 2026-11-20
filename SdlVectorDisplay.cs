@@ -6,6 +6,7 @@ namespace StarWars;
 
 public sealed class SdlVectorDisplay : IDisposable
 {
+    private const float BeamWidthReferenceHeight = 540f;
     private const float MonitorAspectRatio = 4f / 3f;
     private const float MouseYokeSensitivity = 1.5f;
     private const byte YokeCenter = 0x80;
@@ -322,6 +323,10 @@ public sealed class SdlVectorDisplay : IDisposable
         // treating those coordinates as square pixels makes circles tall and narrow.
         float scaleX = viewportWidth / AtariStarWarsAvg.FieldWidth;
         float scaleY = viewportHeight / AtariStarWarsAvg.FieldHeight;
+        int beamWidth = Math.Clamp(
+            (int)MathF.Round(viewportHeight / BeamWidthReferenceHeight),
+            1,
+            8);
 
         foreach (VectorSegment vector in vectors)
         {
@@ -335,10 +340,65 @@ public sealed class SdlVectorDisplay : IDisposable
             float startY = offsetY + vector.StartY / 65536f * scaleY;
             float endX = offsetX + vector.EndX / 65536f * scaleX;
             float endY = offsetY + vector.EndY / 65536f * scaleY;
-            SDL.RenderLine(_renderer, startX, startY, endX, endY);
+            RenderVectorLine(startX, startY, endX, endY, beamWidth);
         }
 
         SDL.RenderPresent(_renderer);
+    }
+
+    private void RenderVectorLine(
+        float startX,
+        float startY,
+        float endX,
+        float endY,
+        int beamWidth)
+    {
+        if (beamWidth == 1)
+        {
+            SDL.RenderLine(_renderer, startX, startY, endX, endY);
+            return;
+        }
+
+        float deltaX = endX - startX;
+        float deltaY = endY - startY;
+        float length = MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
+        if (length < 0.001f)
+        {
+            RenderVectorCap(startX, startY, beamWidth);
+            return;
+        }
+
+        float normalX = -deltaY / length;
+        float normalY = deltaX / length;
+        float firstOffset = -(beamWidth - 1) * 0.5f;
+        for (int stroke = 0; stroke < beamWidth; stroke++)
+        {
+            float offset = firstOffset + stroke;
+            float offsetX = normalX * offset;
+            float offsetY = normalY * offset;
+            SDL.RenderLine(
+                _renderer,
+                startX + offsetX,
+                startY + offsetY,
+                endX + offsetX,
+                endY + offsetY);
+        }
+
+        // The physical beam has no flat line caps. Filling both endpoints also
+        // prevents pinholes where thick vectors meet at sharply different angles.
+        RenderVectorCap(startX, startY, beamWidth);
+        RenderVectorCap(endX, endY, beamWidth);
+    }
+
+    private void RenderVectorCap(float x, float y, int beamWidth)
+    {
+        float halfWidth = (beamWidth - 1) * 0.5f;
+        float firstOffset = -halfWidth;
+        for (int row = 0; row < beamWidth; row++)
+        {
+            float rowY = y + firstOffset + row;
+            SDL.RenderLine(_renderer, x - halfWidth, rowY, x + halfWidth, rowY);
+        }
     }
 
     private static void GetMonitorViewport(
