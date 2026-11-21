@@ -18,13 +18,13 @@ public readonly record struct MatrixMicroInstruction(
     bool DirectAddress,
     byte Address);
 
-public sealed class StarWarsMathbox
+public sealed class StarWarsMathbox(AddressSpace memory)
 {
     private const ushort MathRamBase = 0x5000;
     private const int PromSize = 0x400;
     private const int MaximumMicroInstructions = 100_000;
 
-    private readonly AddressSpace _memory;
+    private readonly AddressSpace _memory = memory ?? throw new ArgumentNullException(nameof(memory));
     private readonly MatrixMicroInstruction[] _microcode = new MatrixMicroInstruction[PromSize];
     private bool _microcodeLoaded;
     private uint _prng;
@@ -33,11 +33,6 @@ public sealed class StarWarsMathbox
     private ushort _divisor;
     private ushort _dividendShift;
     private ushort _quotientShift;
-
-    public StarWarsMathbox(AddressSpace memory)
-    {
-        _memory = memory ?? throw new ArgumentNullException(nameof(memory));
-    }
 
     public ushort ProgramAddress { get; private set; }
     public ushort BlockIndex { get; private set; }

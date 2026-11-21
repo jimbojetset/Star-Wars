@@ -1,0 +1,14 @@
+root = true
+
+[*.cs]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+# These enums model byte-wide 6809 and Atari hardware registers.
+dotnet_diagnostic.CA1028.severity = none
+
+# The emulator core is public so it can be tested and hosted by other front ends.
+dotnet_diagnostic.CA1515.severity = none

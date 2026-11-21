@@ -145,11 +145,17 @@ public sealed class StarWarsSoundMemory
         AddressSpace.Load(address, data);
     }
 
-    public void MapMainLatchWrite(Action<byte> write) =>
+    public void MapMainLatchWrite(Action<byte> write)
+    {
+        ArgumentNullException.ThrowIfNull(write);
         AddressSpace.MapWrite(0x0000, 0x07ff, (_, value) => write(value));
+    }
 
-    public void MapSoundLatchRead(Func<byte> read) =>
+    public void MapSoundLatchRead(Func<byte> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
         AddressSpace.MapRead(0x0800, 0x0fff, _ => read());
+    }
 
     public void MapRiot(Mos6532 riot)
     {
@@ -160,6 +166,9 @@ public sealed class StarWarsSoundMemory
         AddressSpace.MapWrite(0x1080, 0x109f, riot.WriteRegister);
     }
 
-    public void MapPokeyWrite(Action<ushort, byte> write) =>
+    public void MapPokeyWrite(Action<ushort, byte> write)
+    {
+        ArgumentNullException.ThrowIfNull(write);
         AddressSpace.MapWrite(0x1800, 0x183f, write);
+    }
 }

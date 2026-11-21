@@ -303,6 +303,8 @@ public sealed class SdlVectorDisplay : IDisposable
 
     public void Render(IReadOnlyList<VectorSegment> vectors)
     {
+        ArgumentNullException.ThrowIfNull(vectors);
+
         if (!SDL.GetCurrentRenderOutputSize(_renderer, out int outputWidth, out int outputHeight))
         {
             throw new InvalidOperationException($"SDL output-size query failed: {SDL.GetError()}");

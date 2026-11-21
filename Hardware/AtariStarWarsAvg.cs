@@ -10,7 +10,7 @@ public readonly record struct VectorSegment(
     byte Blue,
     byte Intensity);
 
-public sealed class AtariStarWarsAvg
+public sealed class AtariStarWarsAvg(AddressSpace memory)
 {
     public const int FieldWidth = 250;
     public const int FieldHeight = 280;
@@ -21,7 +21,7 @@ public sealed class AtariStarWarsAvg
     private const int XCenter = (FieldWidth / 2) << 16;
     private const int YCenter = (FieldHeight / 2) << 16;
 
-    private readonly AddressSpace _memory;
+    private readonly AddressSpace _memory = memory ?? throw new ArgumentNullException(nameof(memory));
     private readonly byte[] _stateProm = new byte[StatePromSize];
     private readonly ushort[] _stack = new ushort[4];
     private readonly List<VectorSegment> _vectors = new(MaximumVectors);
@@ -44,11 +44,6 @@ public sealed class AtariStarWarsAvg
     private int _beamX;
     private int _beamY;
     private bool _halted;
-
-    public AtariStarWarsAvg(AddressSpace memory)
-    {
-        _memory = memory ?? throw new ArgumentNullException(nameof(memory));
-    }
 
     public IReadOnlyList<VectorSegment> Vectors => _vectors;
     public bool Done { get; private set; } = true;

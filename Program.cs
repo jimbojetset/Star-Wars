@@ -56,8 +56,10 @@ try
         machine.SaveNovram();
     }
 }
-catch (Exception exception)
+catch (Exception exception) when (exception is IOException
+    or UnauthorizedAccessException
+    or InvalidOperationException)
 {
-    Console.Error.WriteLine(exception.Message);
+    Console.Error.WriteLine(exception);
     Environment.ExitCode = 1;
 }

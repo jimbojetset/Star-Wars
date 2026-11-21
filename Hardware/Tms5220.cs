@@ -185,6 +185,8 @@ public sealed class Tms5220
 
     public float GenerateSample(int outputSampleRate)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(outputSampleRate);
+
         _nativeSamplePhase += NativeSampleRate / (double)outputSampleRate;
         while (_nativeSamplePhase >= 1)
         {

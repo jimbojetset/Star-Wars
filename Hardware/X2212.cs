@@ -74,7 +74,12 @@ public sealed class X2212
         // The original board stores only when the STORE line is pulsed. MAME
         // auto-saves the live SRAM on exit so calibration changes are not lost.
         Array.Copy(_sram, _eeprom, Size);
-        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        string? directory = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
         File.WriteAllBytes(_path, _eeprom);
     }
 }
