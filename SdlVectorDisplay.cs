@@ -11,6 +11,28 @@ public sealed class SdlVectorDisplay : IDisposable
     private const float MouseYokeSensitivity = 1.5f;
     private const byte YokeCenter = 0x80;
 
+    private static readonly (float StartX, float StartY, float EndX, float EndY)[] PausedLabelStrokes =
+    [
+        // P
+        (0, 6, 0, 0), (0, 0, 3, 0), (3, 0, 4, 1),
+        (4, 1, 4, 2), (4, 2, 3, 3), (3, 3, 0, 3),
+        // A
+        (6, 6, 6, 1), (6, 1, 8, 0), (8, 0, 10, 1),
+        (10, 1, 10, 6), (6, 3, 10, 3),
+        // U
+        (12, 0, 12, 5), (12, 5, 13, 6), (13, 6, 15, 6),
+        (15, 6, 16, 5), (16, 5, 16, 0),
+        // S
+        (22, 0, 18, 0), (18, 0, 18, 3), (18, 3, 22, 3),
+        (22, 3, 22, 6), (22, 6, 18, 6),
+        // E
+        (28, 0, 24, 0), (24, 0, 24, 6), (24, 6, 28, 6),
+        (24, 3, 27, 3),
+        // D
+        (30, 0, 33, 0), (33, 0, 34, 1), (34, 1, 34, 5),
+        (34, 5, 33, 6), (33, 6, 30, 6), (30, 6, 30, 0)
+    ];
+
     private readonly nint _window;
     private readonly nint _renderer;
     private readonly nint _audioStream;
@@ -77,6 +99,9 @@ public sealed class SdlVectorDisplay : IDisposable
         }
     }
 
+    public bool Paused { get; private set; }
+    public bool SoundEnabled { get; private set; } = true;
+
     public bool ProcessEvents() => ProcessEventsCore(null, 0);
 
     public bool ProcessEvents(StarWarsMachine machine, double elapsedSeconds)
@@ -126,6 +151,33 @@ public sealed class SdlVectorDisplay : IDisposable
             if (keyDown && currentEvent.Key.Key == SDL.Keycode.Escape)
             {
                 return false;
+            }
+
+            if (keyDown
+                && !currentEvent.Key.Repeat
+                && (currentEvent.Key.Mod & SDL.Keymod.Ctrl) != 0)
+            {
+                if (currentEvent.Key.Key == SDL.Keycode.P)
+                {
+                    Paused = !Paused;
+                    if (Paused)
+                    {
+                        SDL.ClearAudioStream(_audioStream);
+                    }
+
+                    continue;
+                }
+
+                if (currentEvent.Key.Key == SDL.Keycode.Q)
+                {
+                    SoundEnabled = !SoundEnabled;
+                    if (!SoundEnabled)
+                    {
+                        SDL.ClearAudioStream(_audioStream);
+                    }
+
+                    continue;
+                }
             }
 
             if (machine is not null)
@@ -345,7 +397,44 @@ public sealed class SdlVectorDisplay : IDisposable
             RenderVectorLine(startX, startY, endX, endY, beamWidth);
         }
 
+        if (Paused)
+        {
+            RenderPausedLabel(offsetX, offsetY, scaleX, scaleY, beamWidth);
+        }
+
         SDL.RenderPresent(_renderer);
+    }
+
+    private void RenderPausedLabel(
+        float offsetX,
+        float offsetY,
+        float scaleX,
+        float scaleY,
+        int beamWidth)
+    {
+        const float labelX = 108;
+        const float labelY = 3;
+
+        var background = new SDL.FRect
+        {
+            X = offsetX + (labelX - 1) * scaleX,
+            Y = offsetY + (labelY - 1) * scaleY,
+            W = 36 * scaleX,
+            H = 8 * scaleY
+        };
+        SDL.SetRenderDrawColor(_renderer, 0, 0, 0, 255);
+        SDL.RenderFillRect(_renderer, in background);
+
+        SDL.SetRenderDrawColor(_renderer, 181, 0, 0, 255);
+        foreach ((float startX, float startY, float endX, float endY) in PausedLabelStrokes)
+        {
+            RenderVectorLine(
+                offsetX + (labelX + startX) * scaleX,
+                offsetY + (labelY + startY) * scaleY,
+                offsetX + (labelX + endX) * scaleX,
+                offsetY + (labelY + endY) * scaleY,
+                beamWidth);
+        }
     }
 
     private void RenderVectorLine(
@@ -425,7 +514,7 @@ public sealed class SdlVectorDisplay : IDisposable
 
     public void QueueAudio(ReadOnlySpan<float> samples)
     {
-        if (samples.IsEmpty)
+        if (!SoundEnabled || samples.IsEmpty)
         {
             return;
         }

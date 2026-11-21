@@ -1,6 +1,6 @@
 # Star Wars arcade emulator
 
-A focused C# emulator for Atari's 1983 *Star Wars* vector arcade hardware. It models the two Motorola 6809 CPUs, AVG vector generator, Matrix Processor, RIOT, four POKEYs, TMS5220 speech synthesizer, and X2212 NOVRAM. SDL3 provides the display, input, and audio front end.
+A C# emulator for Atari's 1983 *Star Wars* vector arcade hardware. It models the two Motorola 6809 CPUs, AVG vector generator, Matrix Processor, RIOT, four POKEYs, TMS5220 speech synthesizer, and X2212 NOVRAM. SDL3 provides the display, input, and audio front end.
 
 ## Requirements
 
@@ -28,6 +28,8 @@ The emulator starts full-screen. Press Escape to quit.
 | Tilt | T |
 | Self-test toggle | F1 |
 | Diagnostic step | F2 |
+| Pause / resume | Ctrl+P |
+| Sound on / off | Ctrl+Q |
 
 NOVRAM is saved to `nvram/starwars/x2212` on exit.
 

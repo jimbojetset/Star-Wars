@@ -36,15 +36,22 @@ try
                 break;
             }
 
-            pendingCpuCycles += elapsedSeconds * StarWarsHardware.CpuClockHz;
-
-            // Do not let a debugger pause turn into several seconds of catch-up.
-            pendingCpuCycles = Math.Min(pendingCpuCycles, StarWarsHardware.CpuClockHz / 4.0);
-            int cycles = (int)pendingCpuCycles;
-            if (cycles > 0)
+            if (display.Paused)
             {
-                machine.RunCpuCycles(cycles);
-                pendingCpuCycles -= cycles;
+                pendingCpuCycles = 0;
+            }
+            else
+            {
+                pendingCpuCycles += elapsedSeconds * StarWarsHardware.CpuClockHz;
+
+                // Do not let a debugger pause turn into several seconds of catch-up.
+                pendingCpuCycles = Math.Min(pendingCpuCycles, StarWarsHardware.CpuClockHz / 4.0);
+                int cycles = (int)pendingCpuCycles;
+                if (cycles > 0)
+                {
+                    machine.RunCpuCycles(cycles);
+                    pendingCpuCycles -= cycles;
+                }
             }
 
             display.QueueAudio(machine.Audio.DrainSamples());
