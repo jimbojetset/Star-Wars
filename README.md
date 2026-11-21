@@ -7,7 +7,8 @@ A C# emulator for Atari's 1983 *Star Wars* vector arcade hardware. It models the
 - .NET 10 SDK
 - Legally obtained Atari *Star Wars* ROM images in `Roms/`
 
-The expected ROM filenames are listed in `StarWarsMachine.LoadRoms`. ROM images are deliberately excluded from source control.
+ROM images are deliberately excluded. 
+The expected ROM filenames are listed in `StarWarsMachine.LoadRoms`. 
 
 ## Run
 
