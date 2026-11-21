@@ -5,3 +5,4 @@ snap/
 nvram/
 Roms/*
 !Roms/.gitkeep
+.editorconfig
