@@ -12,9 +12,12 @@
 
   <ItemGroup>
     <PackageReference Include="SDL3-CS" Version="3.4.20" />
-    <PackageReference Include="SDL3-CS.MacOS" Version="3.4.20" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
-    <PackageReference Include="SDL3-CS.Linux" Version="3.4.20" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
-    <PackageReference Include="SDL3-CS.Windows" Version="3.4.20" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <PackageReference Include="SDL3-CS.MacOS" Version="3.4.20"
+                      Condition="('$(RuntimeIdentifier)' == '' And '$(RuntimeIdentifiers)' == '' And $([MSBuild]::IsOSPlatform('OSX'))) Or $([System.String]::Copy('$(RuntimeIdentifier);$(RuntimeIdentifiers)').Contains('osx'))" />
+    <PackageReference Include="SDL3-CS.Linux" Version="3.4.20"
+                      Condition="('$(RuntimeIdentifier)' == '' And '$(RuntimeIdentifiers)' == '' And $([MSBuild]::IsOSPlatform('Linux'))) Or $([System.String]::Copy('$(RuntimeIdentifier);$(RuntimeIdentifiers)').Contains('linux'))" />
+    <PackageReference Include="SDL3-CS.Windows" Version="3.4.20"
+                      Condition="('$(RuntimeIdentifier)' == '' And '$(RuntimeIdentifiers)' == '' And $([MSBuild]::IsOSPlatform('Windows'))) Or $([System.String]::Copy('$(RuntimeIdentifier);$(RuntimeIdentifiers)').Contains('win'))" />
   </ItemGroup>
 
   <ItemGroup>
