@@ -96,6 +96,13 @@ public sealed class M6809
         TotalCycles = 7;
     }
 
+    internal void ResetPreservingCycles()
+    {
+        long cycles = TotalCycles;
+        Reset();
+        TotalCycles = cycles;
+    }
+
     public void SetIrqLine(bool asserted) => _irqLine = asserted;
 
     public void SetFirqLine(bool asserted) => _firqLine = asserted;

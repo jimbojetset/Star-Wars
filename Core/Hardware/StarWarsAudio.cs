@@ -25,14 +25,19 @@ public sealed class StarWarsAudio
 
     public void Reset()
     {
+        ResetChips();
+        _pendingSamples.Clear();
+        _sampleClockAccumulator = 0;
+    }
+
+    internal void ResetChips()
+    {
         foreach (AtariPokey pokey in _pokeys)
         {
             pokey.Reset();
         }
 
         Speech.Reset();
-        _pendingSamples.Clear();
-        _sampleClockAccumulator = 0;
     }
 
     public void WritePokey(int pokey, int register, byte value)

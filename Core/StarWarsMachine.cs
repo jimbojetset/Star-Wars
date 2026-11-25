@@ -481,12 +481,14 @@ public sealed class StarWarsMachine
         SoundCpu.SetIrqLine(false);
         SoundCpu.SetFirqLine(false);
         SoundCpu.SetNmiLine(false);
-        Audio.Reset();
+        // Reset the sound board at its current clock, keeping PCM already
+        // generated earlier in this emulation slice.
+        Audio.ResetChips();
         SoundRiot.Reset();
         SoundRiot.PortAInput = 0x10;
         UpdateSoundHandshake();
         UpdateSpeechBus();
-        SoundCpu.Reset();
+        SoundCpu.ResetPreservingCycles();
     }
 
     private void SetMainIrq(bool asserted)
