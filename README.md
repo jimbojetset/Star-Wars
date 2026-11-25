@@ -34,11 +34,35 @@ The emulator starts full-screen. Press Escape to quit.
 
 NOVRAM is saved to `nvram/starwars/x2212` on exit.
 
+## Run in a browser
+
+Put the 13 extracted ROM and PROM files in `Roms/`. Build the optimized browser version once and republish after changing the emulator or its web assets:
+
+```sh
+dotnet workload install wasm-tools
+dotnet publish Web/StarWars.Web.csproj -c Release
+```
+
+Launch the published build with:
+
+```sh
+dotnet run --project Web/StarWars.Web.csproj
+```
+
+Open `http://localhost:8080`. The browser fetches the ROMs automatically. Click **Start game** to enable audio. Press C to insert a coin, then follow the on-screen prompts. Use P or the Pause button to pause. Open **Diagnostics** to check the audio buffer, underruns, and playback level. The browser saves X2212 NOVRAM for the current origin, so use the same URL to keep that save.
+
+Safari Lockdown Mode can block the WebAssembly runtime this build requires. To keep Lockdown Mode enabled, play in Brave on macOS or run the SDL desktop build with `dotnet run`.
+
+On macOS, the WebAssembly AOT compiler can fail if the SDK path contains spaces, such as a `dotnetup` install under `Application Support`. Use a .NET SDK installed at a path without spaces for the Release publish.
+
+For development, `dotnet run --project Web/StarWars.Web.csproj -p:RunInterpreted=true` serves the current source build through the WebAssembly interpreter. It can be slower than the published build.
+
+The build includes the ROMs from `Roms/` in the static output. Host that output only where you have permission to distribute the ROMs.
+
 ## Code map
 
-- `Cpu/M6809.cs` implements the main and sound CPU instruction set, flags, stacks, interrupts, and cycle accounting.
-- `Hardware/StarWarsMemory.cs` describes the main- and sound-board memory maps.
-- `Hardware/AtariStarWarsAvg.cs` runs the AVG state PROM and emits vector segments.
-- `Hardware/StarWarsMathbox.cs` executes the Matrix Processor PROMs and divider/PRNG hardware.
-- `Hardware/AtariPokey.cs`, `Hardware/Tms5220.cs`, and `Hardware/StarWarsAudio.cs` generate sound.
-- `StarWarsMachine.cs` wires the boards together; `SdlVectorDisplay.cs` is the SDL front end.
+- `Core/StarWarsMachine.cs` wires together the boards shared by the desktop and browser builds.
+- `Core/Cpu/M6809.cs` implements both CPUs, including interrupts and cycle accounting.
+- `Core/Hardware/` contains the memory maps, AVG, mathbox, RIOT, POKEYs, TMS5220, and X2212.
+- `SdlVectorDisplay.cs` handles desktop display, controls, and PCM playback.
+- `Web/` is the Blazor WebAssembly front end. Canvas draws the AVG vectors and an AudioWorklet consumes the same 48 kHz PCM used by SDL.

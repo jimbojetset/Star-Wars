@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Star Wars Arcade Emulator</title>
+    <base href="./">
+    <link rel="stylesheet" href="css/cabinet.css">
+</head>
+<body>
+    <div id="app"><p id="startup-status" class="loading" role="status">Loading the emulator…</p></div>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        async function startEmulator() {
+            const status = document.getElementById("startup-status");
+            try {
+                // Safari Lockdown Mode can make WebAssembly unavailable before Blazor starts.
+                await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+            } catch {
+                status.textContent = "WebAssembly is unavailable. Safari Lockdown Mode can block it. Use Brave or the desktop emulator to play.";
+                return;
+            }
+
+            try {
+                await Blazor.start();
+            } catch (error) {
+                status.textContent = "The emulator could not start. Reload the page to try again.";
+                console.error(error);
+            }
+        }
+
+        startEmulator();
+    </script>
+</body>
+</html>

@@ -27,20 +27,30 @@ public sealed class X2212
 
         if (File.Exists(path))
         {
-            byte[] data = File.ReadAllBytes(path);
-            if (data.Length != Size)
-            {
-                throw new InvalidDataException($"The X2212 image must be exactly {Size} bytes.");
-            }
+            LoadImage(File.ReadAllBytes(path));
+        }
+        else
+        {
+            Recall();
+        }
+    }
 
-            for (int address = 0; address < Size; address++)
-            {
-                _eeprom[address] = (byte)(data[address] & 0x0f);
-            }
+    public void LoadImage(ReadOnlySpan<byte> data)
+    {
+        if (data.Length != Size)
+        {
+            throw new InvalidDataException($"The X2212 image must be exactly {Size} bytes.");
+        }
+
+        for (int address = 0; address < Size; address++)
+        {
+            _eeprom[address] = (byte)(data[address] & 0x0f);
         }
 
         Recall();
     }
+
+    public byte[] CaptureImage() => (byte[])_sram.Clone();
 
     public void SetStoreLine(bool asserted)
     {

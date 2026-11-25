@@ -23,6 +23,13 @@ public sealed class StarWarsMachine
 {
     public const int MainIrqPeriodCycles = 6144;
 
+    public static IReadOnlyList<string> RomFileNames { get; } = Array.AsReadOnly<string>(
+    [
+        "136021.214", "136021.102", "136021.203", "136021.104", "136021.206", "136021.105",
+        "136021.107", "136021.208", "136021.110", "136021.111", "136021.112", "136021.113",
+        "136021-105.1l"
+    ]);
+
     private readonly bool[] _mainOutputLatch = new bool[8];
     private int _cyclesUntilMainIrq = MainIrqPeriodCycles;
     private byte _soundCommand;
@@ -203,29 +210,53 @@ public sealed class StarWarsMachine
     public void LoadRoms(string directory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        LoadRomImages(fileName => File.ReadAllBytes(Path.Combine(directory, fileName)));
+    }
 
-        byte[] bankedRom = ReadRom(directory, "136021.214", 0x4000);
+    public void LoadRomImages(IReadOnlyDictionary<string, byte[]> images)
+    {
+        ArgumentNullException.ThrowIfNull(images);
+        LoadRomImages(fileName => images.TryGetValue(fileName, out byte[]? image)
+            ? image
+            : throw new FileNotFoundException($"Missing ROM '{fileName}'.", fileName));
+    }
+
+    private void LoadRomImages(Func<string, byte[]> readImage)
+    {
+        byte[] ReadRom(string fileName, int expectedLength)
+        {
+            byte[] data = readImage(fileName);
+            if (data.Length != expectedLength)
+            {
+                throw new InvalidDataException(
+                    $"ROM '{fileName}' is {data.Length} bytes; expected {expectedLength} bytes.");
+            }
+
+            return data;
+        }
+
+        byte[] bankedRom = ReadRom("136021.214", 0x4000);
         MainMemory.LoadBankedRom(0, bankedRom.AsSpan(0x0000, 0x2000));
         MainMemory.LoadBankedRom(1, bankedRom.AsSpan(0x2000, 0x2000));
-        MainMemory.LoadFixedRom(0x8000, ReadRom(directory, "136021.102", 0x2000));
-        MainMemory.LoadFixedRom(0xa000, ReadRom(directory, "136021.203", 0x2000));
-        MainMemory.LoadFixedRom(0xc000, ReadRom(directory, "136021.104", 0x2000));
-        MainMemory.LoadFixedRom(0xe000, ReadRom(directory, "136021.206", 0x2000));
-        MainMemory.LoadVectorRom(ReadRom(directory, "136021.105", 0x1000));
+        MainMemory.LoadFixedRom(0x8000, ReadRom("136021.102", 0x2000));
+        MainMemory.LoadFixedRom(0xa000, ReadRom("136021.203", 0x2000));
+        MainMemory.LoadFixedRom(0xc000, ReadRom("136021.104", 0x2000));
+        MainMemory.LoadFixedRom(0xe000, ReadRom("136021.206", 0x2000));
+        MainMemory.LoadVectorRom(ReadRom("136021.105", 0x1000));
 
-        byte[] soundRom0 = ReadRom(directory, "136021.107", 0x2000);
-        byte[] soundRom1 = ReadRom(directory, "136021.208", 0x2000);
+        byte[] soundRom0 = ReadRom("136021.107", 0x2000);
+        byte[] soundRom1 = ReadRom("136021.208", 0x2000);
         SoundMemory.LoadRom(0x4000, soundRom0);
         SoundMemory.LoadRom(0xc000, soundRom0);
         SoundMemory.LoadRom(0x6000, soundRom1);
         SoundMemory.LoadRom(0xe000, soundRom1);
 
         Mathbox.LoadMicrocode(
-            ReadRom(directory, "136021.110", 0x0400),
-            ReadRom(directory, "136021.111", 0x0400),
-            ReadRom(directory, "136021.112", 0x0400),
-            ReadRom(directory, "136021.113", 0x0400));
-        VectorGenerator.LoadStateProm(ReadRom(directory, "136021-105.1l", 0x0100));
+            ReadRom("136021.110", 0x0400),
+            ReadRom("136021.111", 0x0400),
+            ReadRom("136021.112", 0x0400),
+            ReadRom("136021.113", 0x0400));
+        VectorGenerator.LoadStateProm(ReadRom("136021-105.1l", 0x0100));
     }
 
     public void LoadNovram(string path) => MainMemory.Novram.Load(path);
@@ -468,17 +499,4 @@ public sealed class StarWarsMachine
 
     private static byte SetActiveLow(byte port, byte mask, bool active) =>
         active ? (byte)(port & ~mask) : (byte)(port | mask);
-
-    private static byte[] ReadRom(string directory, string fileName, int expectedLength)
-    {
-        string path = Path.Combine(directory, fileName);
-        byte[] data = File.ReadAllBytes(path);
-        if (data.Length != expectedLength)
-        {
-            throw new InvalidDataException(
-                $"ROM '{fileName}' is {data.Length} bytes; expected {expectedLength} bytes.");
-        }
-
-        return data;
-    }
 }

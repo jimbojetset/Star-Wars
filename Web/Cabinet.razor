@@ -1,0 +1,189 @@
+@using System.Runtime.InteropServices
+@using Microsoft.JSInterop
+@using StarWars.Hardware
+@inject IJSRuntime JS
+@inject HttpClient Http
+
+<main class="cabinet">
+    <header class="toolbar">
+        <h1>Star Wars <span>Arcade emulator</span></h1>
+        <div id="game-controls" hidden>
+            <button id="pause-game" type="button" aria-pressed="false">Pause</button>
+            <button id="mute-game" type="button" aria-pressed="false">Mute</button>
+        </div>
+    </header>
+
+    <div class="monitor">
+        <canvas id="vectors" tabindex="0" aria-label="Vector display and yoke controls"></canvas>
+        <section id="rom-panel" class="rom-panel" aria-label="Start game">
+            <p class="rom-status" role="status">@_romStatus</p>
+            <button id="start-game" type="button" disabled="@(_machine is null)">Start game</button>
+        </section>
+        <div id="paused" class="paused" hidden>Paused</div>
+    </div>
+
+    <div id="touch-controls" class="touch-controls" hidden>
+        <button type="button" data-controls="16">Coin</button>
+        <button type="button" data-controls="256">Left thumb</button>
+        <button type="button" data-controls="512">Right thumb</button>
+        <button type="button" data-controls="192">Fire / Start</button>
+    </div>
+    <p class="controls-hint">Mouse, arrows or drag to aim. Space or click to fire. C inserts a coin. 1 and 2 operate the thumb buttons.</p>
+    <p id="browser-message" role="status" hidden></p>
+    <details>
+        <summary>Diagnostics</summary>
+        <output id="diagnostics">Waiting for the game to start.</output>
+    </details>
+</main>
+
+@code {
+    private IJSInProcessObjectReference? _browser;
+    private DotNetObjectReference<Cabinet>? _cabinet;
+    private StarWarsMachine? _machine;
+    private string _romStatus = "Loading arcade ROMs…";
+    private double _soundCycleTarget;
+    private long _lastVectorRun = -1;
+    private byte[] _vectorBytes = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _browser = await JS.InvokeAsync<IJSInProcessObjectReference>("import", "./js/cabinet.js");
+        _cabinet = DotNetObjectReference.Create(this);
+        _browser.InvokeVoid("initialize", _cabinet, AtariStarWarsAvg.FieldWidth,
+            AtariStarWarsAvg.FieldHeight, StarWarsAudio.SampleRate);
+        await LoadRomsAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadRomsAsync()
+    {
+        try
+        {
+            var images = await Task.WhenAll(StarWarsMachine.RomFileNames.Select(FetchRomAsync));
+            var machine = new StarWarsMachine();
+            machine.LoadRomImages(images.ToDictionary(image => image.Name, image => image.Data));
+            string? saved = _browser!.Invoke<string?>("loadNovram");
+            if (saved is not null)
+            {
+                Span<byte> novram = stackalloc byte[X2212.Size];
+                if (Convert.TryFromBase64String(saved, novram, out int length) && length == X2212.Size)
+                {
+                    machine.MainMemory.Novram.LoadImage(novram);
+                }
+            }
+
+            machine.Reset();
+            _soundCycleTarget = machine.SoundCpu.TotalCycles;
+            _lastVectorRun = -1;
+            _machine = machine;
+            _romStatus = "ROMs loaded. Start the cabinet to enable sound.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
+        {
+            _romStatus = exception.Message;
+        }
+    }
+
+    private async Task<(string Name, byte[] Data)> FetchRomAsync(string name)
+    {
+        try
+        {
+            return (name, await Http.GetByteArrayAsync($"roms/{name}"));
+        }
+        catch (HttpRequestException exception)
+        {
+            throw new IOException($"Could not load {name}. Check the Roms folder and restart the web build.", exception);
+        }
+    }
+
+    [JSInvokable]
+    public int AdvanceFrame(double elapsedSeconds, int controls, int pointerYaw, int pointerPitch, bool playAudio)
+    {
+        StarWarsMachine machine = _machine!;
+        bool left = (controls & 1) != 0;
+        bool right = (controls & 2) != 0;
+        bool up = (controls & 4) != 0;
+        bool down = (controls & 8) != 0;
+        bool usePointer = pointerYaw >= 0 && !left && !right && !up && !down;
+        double movementTime = Math.Min(elapsedSeconds, 0.05);
+        machine.YokeYaw = usePointer ? (byte)pointerYaw : MoveAxis(machine.YokeYaw, left, right, movementTime, 360);
+        machine.YokePitch = usePointer ? (byte)pointerPitch : MoveAxis(machine.YokePitch, down, up, movementTime, 500);
+        machine.LeftCoinPressed = (controls & 16) != 0;
+        machine.RightCoinPressed = (controls & 32) != 0;
+        machine.LeftTriggerPressed = (controls & 64) != 0;
+        machine.RightTriggerPressed = (controls & 128) != 0;
+        machine.LeftThumbPressed = (controls & 256) != 0;
+        machine.RightThumbPressed = (controls & 512) != 0;
+        machine.AuxiliaryCoinPressed = (controls & 1024) != 0;
+        machine.TiltPressed = (controls & 2048) != 0;
+        machine.DiagnosticStepPressed = (controls & 4096) != 0;
+
+        _soundCycleTarget += elapsedSeconds * StarWarsHardware.CpuClockHz;
+        int cycles = (int)(_soundCycleTarget - machine.SoundCpu.TotalCycles);
+        if (cycles > 0)
+        {
+            machine.RunCpuCycles(cycles);
+        }
+
+        float[] samples = machine.Audio.DrainSamples();
+        if (playAudio && samples.Length != 0)
+        {
+            // Blazor transfers byte[] as a Uint8Array. Keep the PCM in native Float32 format.
+            _browser!.InvokeVoid("queueAudio", MemoryMarshal.AsBytes(samples.AsSpan()).ToArray());
+        }
+
+        if (machine.VectorGenerator.RunCount != _lastVectorRun)
+        {
+            _lastVectorRun = machine.VectorGenerator.RunCount;
+            DrawVectors(machine.VectorGenerator.Vectors);
+        }
+
+        return samples.Length;
+    }
+
+    [JSInvokable]
+    public string CaptureNovram() => Convert.ToBase64String(_machine!.MainMemory.Novram.CaptureImage());
+
+    [JSInvokable]
+    public void ToggleSelfTest() => _machine!.SelfTestEnabled = !_machine.SelfTestEnabled;
+
+    private void DrawVectors(IReadOnlyList<VectorSegment> vectors)
+    {
+        const int intsPerVector = 5;
+        int bytesNeeded = vectors.Count * intsPerVector * sizeof(int);
+        if (_vectorBytes.Length < bytesNeeded)
+        {
+            _vectorBytes = new byte[Math.Max(bytesNeeded, _vectorBytes.Length * 2)];
+        }
+
+        Span<int> packed = MemoryMarshal.Cast<byte, int>(_vectorBytes.AsSpan());
+        int offset = 0;
+        foreach (VectorSegment vector in vectors)
+        {
+            packed[offset++] = vector.StartX;
+            packed[offset++] = vector.StartY;
+            packed[offset++] = vector.EndX;
+            packed[offset++] = vector.EndY;
+            packed[offset++] = (vector.Intensity << 24) | (vector.Red << 16) | (vector.Green << 8) | vector.Blue;
+        }
+
+        _browser!.InvokeVoid("drawVectors", _vectorBytes, vectors.Count);
+    }
+
+    private static byte MoveAxis(byte position, bool negative, bool positive, double elapsed, double speed)
+    {
+        if (negative == positive)
+        {
+            return 0x80;
+        }
+
+        int target = negative ? 0 : 255;
+        int movement = Math.Max(1, (int)Math.Round(speed * elapsed));
+        return (byte)(position + Math.Clamp(target - position, -movement, movement));
+    }
+}
