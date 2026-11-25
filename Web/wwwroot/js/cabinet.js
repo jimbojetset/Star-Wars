@@ -23,16 +23,16 @@ export function initialize(cabinet, width, height, pcmRate) {
     fieldHeight = height;
     new ResizeObserver(paintVectors).observe(canvas);
 
-    const startButton = document.querySelector("#start-game");
     const pauseButton = document.querySelector("#pause-game");
     const muteButton = document.querySelector("#mute-game");
     const message = document.querySelector("#browser-message");
+    const diagnosticsPanel = document.querySelector("#game-diagnostics");
     const diagnostics = document.querySelector("#diagnostics");
     const pressedKeys = new Set();
     const touchButtons = new Map();
-    let started = false;
     let paused = false;
     let muted = false;
+    let audioStarting = false;
     let lastFrame;
     let lastAudioTime;
     let measurementStart;
@@ -51,7 +51,6 @@ export function initialize(cabinet, width, height, pcmRate) {
     }
 
     function saveNovram() {
-        if (!started) return;
         const image = cabinet.invokeMethod("CaptureNovram");
         if (image === savedImage) return;
         try {
@@ -91,7 +90,7 @@ export function initialize(cabinet, width, height, pcmRate) {
             return;
         }
 
-        const audioRunning = audioContext?.state === "running";
+        const audioRunning = audioNode !== undefined && audioContext?.state === "running";
         const audioTime = audioRunning ? audioContext.currentTime : undefined;
         if (lastFrame === undefined || now - lastFrame > 100) {
             resetTiming();
@@ -137,10 +136,11 @@ export function initialize(cabinet, width, height, pcmRate) {
             generated = 0;
         } else if (now - measurementStart >= 1000) {
             const seconds = (now - measurementStart) / 1000;
-            const audio = audioStats && !muted
+            const audio = audioStats && audioRunning && !muted
                 ? `${(audioStats.queued * 1000 / pcmRate).toFixed(0)} ms buffered · ${audioStats.underruns} underruns · ${audioStats.overflows} overflows · peak ${audioStats.peak.toFixed(3)}`
-                : muted ? "Muted" : (audioContext?.state ?? "Audio unavailable");
+                : muted ? "Muted" : (audioContext?.state ?? "Sound off");
             diagnostics.textContent = `${Math.round(frameCount / seconds)} fps · ${(frameWork / frameCount).toFixed(1)} ms per frame · ${Math.round(generated / seconds)} samples/s · ${audio}`;
+            diagnosticsPanel.hidden = false;
             saveNovram();
             measurementStart = now;
             frameCount = 0;
@@ -151,23 +151,19 @@ export function initialize(cabinet, width, height, pcmRate) {
         requestAnimationFrame(frame);
     }
 
-    startButton.addEventListener("click", async () => {
-        startButton.disabled = true;
+    async function enableAudio() {
+        if (audioStarting || audioNode) return;
+        audioStarting = true;
         try {
             await openAudio(pcmRate);
-            muteButton.disabled = false;
+            muteButton.textContent = "Mute";
+            showMessage("");
         } catch (error) {
             showMessage(`Audio unavailable. ${error.message}`);
-            muteButton.disabled = true;
+        } finally {
+            audioStarting = false;
         }
-
-        started = true;
-        document.querySelector("#rom-panel").hidden = true;
-        document.querySelector("#game-controls").hidden = false;
-        document.querySelector("#touch-controls").hidden = false;
-        canvas.focus();
-        requestAnimationFrame(frame);
-    });
+    }
 
     function togglePause() {
         paused = !paused;
@@ -185,7 +181,10 @@ export function initialize(cabinet, width, height, pcmRate) {
     }
 
     function toggleMute() {
-        if (!audioNode) return;
+        if (!audioNode) {
+            void enableAudio();
+            return;
+        }
         muted = !muted;
         muteButton.textContent = muted ? "Unmute" : "Mute";
         muteButton.setAttribute("aria-pressed", String(muted));
@@ -199,7 +198,6 @@ export function initialize(cabinet, width, height, pcmRate) {
     pauseButton.addEventListener("click", togglePause);
     muteButton.addEventListener("click", toggleMute);
     window.addEventListener("keydown", event => {
-        if (!started) return;
         if (event.code === "KeyP" && !event.repeat) {
             event.preventDefault();
             togglePause();
@@ -209,6 +207,7 @@ export function initialize(cabinet, width, height, pcmRate) {
         } else if (keys.has(event.code) && !event.metaKey && !event.ctrlKey && !event.altKey) {
             if (event.target instanceof HTMLButtonElement && event.code === "Space") return;
             event.preventDefault();
+            void enableAudio();
             pressedKeys.add(event.code);
             if (keys.get(event.code) < 16) yaw = -1;
         }
@@ -224,7 +223,7 @@ export function initialize(cabinet, width, height, pcmRate) {
 
     canvas.addEventListener("contextmenu", event => event.preventDefault());
     canvas.addEventListener("pointerdown", event => {
-        if (!started || paused) return;
+        if (paused) return;
         if (event.pointerType !== "mouse" && touchYoke !== undefined) return;
         event.preventDefault();
         canvas.focus();
@@ -236,8 +235,9 @@ export function initialize(cabinet, width, height, pcmRate) {
             touchYoke = event.pointerId;
         }
     });
+    canvas.addEventListener("pointerup", enableAudio);
     canvas.addEventListener("pointermove", event => {
-        if (!started || paused) return;
+        if (paused) return;
         if (event.pointerType === "mouse") {
             mouseButtons = (event.buttons & 1 ? 64 : 0) | (event.buttons & 2 ? 128 : 0);
         } else if (touchYoke !== event.pointerId) {
@@ -262,13 +262,19 @@ export function initialize(cabinet, width, height, pcmRate) {
             button.setPointerCapture(event.pointerId);
             touchButtons.set(event.pointerId, Number(button.dataset.controls));
         });
+        button.addEventListener("pointerup", enableAudio);
         button.addEventListener("lostpointercapture", event => touchButtons.delete(event.pointerId));
     }
+
+    requestAnimationFrame(frame);
 }
 
 async function openAudio(inputRate) {
-    if (!window.isSecureContext || !window.AudioContext) {
+    if (!window.isSecureContext) {
         throw new Error("Open the game over HTTPS or localhost to enable sound.");
+    }
+    if (!window.AudioContext) {
+        throw new Error("This browser does not support Web Audio.");
     }
 
     audioContext = new AudioContext({ latencyHint: "interactive" });
@@ -289,6 +295,7 @@ async function openAudio(inputRate) {
     } catch (error) {
         await audioContext.close();
         audioContext = undefined;
+        audioNode = undefined;
         throw error;
     }
 }

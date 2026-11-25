@@ -7,27 +7,23 @@
 <main class="cabinet">
     <header class="toolbar">
         <h1>Star Wars <span>Arcade emulator</span></h1>
-        <div id="game-controls" hidden>
+        <p class="copyright-notice">
+            This emulator is for educational purposes only.<br>
+            Star Wars Arcade Game is &copy; Atari
+        </p>
+        <div id="game-controls" hidden="@(_machine is null)">
             <button id="pause-game" type="button" aria-pressed="false">Pause</button>
-            <button id="mute-game" type="button" aria-pressed="false">Mute</button>
+            <button id="mute-game" type="button" aria-pressed="false">Enable sound</button>
         </div>
     </header>
 
-    <p class="copyright-notice">
-        This emulator is for educational purposes only.<br>
-        Star Wars Arcade Game is &copy; Atari
-    </p>
-
     <div class="monitor">
         <canvas id="vectors" tabindex="0" aria-label="Vector display and yoke controls"></canvas>
-        <section id="rom-panel" class="rom-panel" aria-label="Start game">
-            <p class="rom-status" role="status">@_romStatus</p>
-            <button id="start-game" type="button" disabled="@(_machine is null)">Start game</button>
-        </section>
+        <p id="rom-panel" class="rom-panel" role="status" hidden="@(_machine is not null)">@_romStatus</p>
         <div id="paused" class="paused" hidden>Paused</div>
     </div>
 
-    <div id="touch-controls" class="touch-controls" hidden>
+    <div id="touch-controls" class="touch-controls" hidden="@(_machine is null)">
         <button type="button" data-controls="16">Coin</button>
         <button type="button" data-controls="256">Left thumb</button>
         <button type="button" data-controls="512">Right thumb</button>
@@ -35,9 +31,9 @@
     </div>
     <p class="controls-hint">Mouse, arrows or drag to aim. Space or click to fire. C inserts a coin. 1 and 2 operate the thumb buttons.</p>
     <p id="browser-message" role="status" hidden></p>
-    <details>
+    <details id="game-diagnostics" hidden>
         <summary>Diagnostics</summary>
-        <output id="diagnostics">Waiting for the game to start.</output>
+        <output id="diagnostics"></output>
     </details>
 </main>
 
@@ -45,7 +41,7 @@
     private IJSInProcessObjectReference? _browser;
     private DotNetObjectReference<Cabinet>? _cabinet;
     private StarWarsMachine? _machine;
-    private string _romStatus = "Loading arcade ROMs…";
+    private string _romStatus = "LOADING...";
     private double _soundCycleTarget;
     private long _lastVectorRun = -1;
     private byte[] _vectorBytes = [];
@@ -58,10 +54,13 @@
         }
 
         _browser = await JS.InvokeAsync<IJSInProcessObjectReference>("import", "./js/cabinet.js");
-        _cabinet = DotNetObjectReference.Create(this);
-        _browser.InvokeVoid("initialize", _cabinet, AtariStarWarsAvg.FieldWidth,
-            AtariStarWarsAvg.FieldHeight, StarWarsAudio.SampleRate);
         await LoadRomsAsync();
+        if (_machine is not null)
+        {
+            _cabinet = DotNetObjectReference.Create(this);
+            _browser.InvokeVoid("initialize", _cabinet, AtariStarWarsAvg.FieldWidth,
+                AtariStarWarsAvg.FieldHeight, StarWarsAudio.SampleRate);
+        }
         StateHasChanged();
     }
 
@@ -86,7 +85,6 @@
             _soundCycleTarget = machine.SoundCpu.TotalCycles;
             _lastVectorRun = -1;
             _machine = machine;
-            _romStatus = "ROMs loaded. Start the cabinet to enable sound.";
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
         {

@@ -49,7 +49,7 @@ Launch the published build with:
 dotnet run --project Web/StarWars.Web.csproj
 ```
 
-Open `http://localhost:8080`. The browser fetches the ROMs automatically. Click **Start game** to enable audio. Press C to insert a coin, then follow the on-screen prompts. Use P or the Pause button to pause. Open **Diagnostics** to check the audio buffer, underruns, and playback level. The browser saves X2212 NOVRAM for the current origin, so use the same URL to keep that save.
+Open `http://localhost:8080`. The cabinet starts as soon as the ROMs load. Use a game key, click or tap the viewport, or select **Enable sound** to start audio. Press C to insert a coin, then follow the on-screen prompts. Use P or the Pause button to pause. **Diagnostics** appears after the first measurements are available. The browser saves X2212 NOVRAM for the current origin, so use the same URL to keep that save.
 
 Safari Lockdown Mode can block the WebAssembly runtime this build requires. To keep Lockdown Mode enabled, play in Brave on macOS or run the SDL desktop build with `dotnet run`.
 
