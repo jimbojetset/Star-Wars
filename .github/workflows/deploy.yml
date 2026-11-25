@@ -1,0 +1,76 @@
+name: Deploy Star Wars to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify arcade ROMs
+        shell: bash
+        run: |
+          missing=0
+          for rom in 136021.214 136021.102 136021.203 136021.104 136021.206 136021.105 \
+                     136021.107 136021.208 136021.110 136021.111 136021.112 136021.113 136021-105.1l; do
+            if [[ ! -s "Roms/$rom" ]]; then
+              echo "::error::Missing Roms/$rom. The browser build requires ROMs cleared for public distribution."
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install WebAssembly build tools
+        run: dotnet workload install wasm-tools --skip-manifest-update
+
+      - name: Publish optimized WebAssembly build
+        run: dotnet publish Web/StarWars.Web.csproj -c Release -o "$RUNNER_TEMP/star-wars-pages"
+
+      - name: Set the Pages base path
+        env:
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          site="$RUNNER_TEMP/star-wars-pages/wwwroot"
+          sed -i "s|<base href=\"\./\">|<base href=\"${PAGES_BASE_PATH%/}/\">|" "$site/index.html"
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/star-wars-pages/wwwroot
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -2,13 +2,13 @@
 
 A C# emulator for Atari's 1983 *Star Wars* vector arcade hardware. It models the two Motorola 6809 CPUs, AVG vector generator, Matrix Processor, RIOT, four POKEYs, TMS5220 speech synthesizer, and X2212 NOVRAM. SDL3 provides the display, input, and audio front end.
 
+[Play Star Wars in your browser](https://jimbojetset.github.io/Star-Wars/)
+
 ## Requirements
 
 - .NET 10 SDK
-- Legally obtained Atari *Star Wars* ROM images in `Roms/`
 
-ROM images are deliberately excluded.
-The expected ROM filenames are listed in `StarWarsMachine.LoadRoms`.
+The arcade ROMs and PROMs are included in `Roms/` and are used by both builds.
 
 ## Run
 
@@ -36,7 +36,7 @@ NOVRAM is saved to `nvram/starwars/x2212` on exit.
 
 ## Run in a browser
 
-Put the 13 extracted ROM and PROM files in `Roms/`. Build the optimized browser version once and republish after changing the emulator or its web assets:
+Build the optimized browser version once and republish after changing the emulator or its web assets:
 
 ```sh
 dotnet workload install wasm-tools
@@ -58,6 +58,10 @@ On macOS, the WebAssembly AOT compiler can fail if the SDK path contains spaces,
 For development, `dotnet run --project Web/StarWars.Web.csproj -p:RunInterpreted=true` serves the current source build through the WebAssembly interpreter. It can be slower than the published build.
 
 The build includes the ROMs from `Roms/` in the static output. Host that output only where you have permission to distribute the ROMs.
+
+### GitHub Pages
+
+The Pages workflow publishes the optimized browser build on pushes to `main` and can also run manually. It checks that the checkout contains all 13 ROMs and PROMs before building. GitHub Pages uses **GitHub Actions** as its publishing source.
 
 ## Code map
 
