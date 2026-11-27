@@ -39,6 +39,7 @@ public sealed class SdlVectorDisplay : IDisposable
     private readonly nint _window;
     private readonly nint _renderer;
     private readonly nint _audioStream;
+    private nint _beamTexture;
     private bool _yokeLeft;
     private bool _yokeRight;
     private bool _yokeUp;
@@ -401,24 +402,33 @@ public sealed class SdlVectorDisplay : IDisposable
         }
 
         float exposure = 1f + 0.09f * bloom;
+        float beamRadius = 1.25f * beamWidth;
         foreach (VectorSegment vector in vectors)
         {
+            if ((vector.Red | vector.Green | vector.Blue) == 0)
+            {
+                continue;
+            }
+
             float brightness = Math.Min(1f, exposure * MathF.Sqrt(vector.Intensity / 255f));
-            byte red = (byte)MathF.Round(vector.Red * brightness);
-            byte green = (byte)MathF.Round(vector.Green * brightness);
-            byte blue = (byte)MathF.Round(vector.Blue * brightness);
-            SDL.SetRenderDrawColor(_renderer, red, green, blue, 255);
+            var color = new SDL.FColor
+            {
+                R = vector.Red * brightness / 255f,
+                G = vector.Green * brightness / 255f,
+                B = vector.Blue * brightness / 255f,
+                A = 1
+            };
 
             float startX = offsetX + vector.StartX / 65536f * scaleX;
             float startY = offsetY + vector.StartY / 65536f * scaleY;
             float endX = offsetX + vector.EndX / 65536f * scaleX;
             float endY = offsetY + vector.EndY / 65536f * scaleY;
-            RenderVectorLine(startX, startY, endX, endY, beamWidth);
+            RenderVectorLine(new Vector2(startX, startY), new Vector2(endX, endY), beamRadius, color);
         }
 
         if (Paused)
         {
-            RenderPausedLabel(offsetX, offsetY, scaleX, scaleY, beamWidth);
+            RenderPausedLabel(offsetX, offsetY, scaleX, scaleY, beamRadius);
         }
 
         SDL.RenderPresent(_renderer);
@@ -506,19 +516,19 @@ public sealed class SdlVectorDisplay : IDisposable
                 A = alpha
             };
 
-            halo[0] = BloomVertex(start, color);
-            halo[1] = BloomVertex(end, color);
+            halo[0] = BeamVertex(start, color);
+            halo[1] = BeamVertex(end, color);
             color.A = 0;
-            halo[2] = BloomVertex(start + across, color);
-            halo[3] = BloomVertex(end + across, color);
-            halo[4] = BloomVertex(end + diagonalA, color);
-            halo[5] = BloomVertex(end + along, color);
-            halo[6] = BloomVertex(end + diagonalB, color);
-            halo[7] = BloomVertex(end - across, color);
-            halo[8] = BloomVertex(start - across, color);
-            halo[9] = BloomVertex(start - diagonalA, color);
-            halo[10] = BloomVertex(start - along, color);
-            halo[11] = BloomVertex(start - diagonalB, color);
+            halo[2] = BeamVertex(start + across, color);
+            halo[3] = BeamVertex(end + across, color);
+            halo[4] = BeamVertex(end + diagonalA, color);
+            halo[5] = BeamVertex(end + along, color);
+            halo[6] = BeamVertex(end + diagonalB, color);
+            halo[7] = BeamVertex(end - across, color);
+            halo[8] = BeamVertex(start - across, color);
+            halo[9] = BeamVertex(start - diagonalA, color);
+            halo[10] = BeamVertex(start - along, color);
+            halo[11] = BeamVertex(start - diagonalB, color);
             SDL.RenderGeometry(_renderer, nint.Zero, halo, halo.Length, triangles, triangles.Length);
         }
 
@@ -526,18 +536,12 @@ public sealed class SdlVectorDisplay : IDisposable
         SDL.SetRenderClipRect(_renderer, nint.Zero);
     }
 
-    private static SDL.Vertex BloomVertex(Vector2 point, SDL.FColor color) => new()
-    {
-        Position = new SDL.FPoint { X = point.X, Y = point.Y },
-        Color = color
-    };
-
     private void RenderPausedLabel(
         float offsetX,
         float offsetY,
         float scaleX,
         float scaleY,
-        int beamWidth)
+        float beamRadius)
     {
         const float labelX = 108;
         const float labelY = 3;
@@ -552,69 +556,89 @@ public sealed class SdlVectorDisplay : IDisposable
         SDL.SetRenderDrawColor(_renderer, 0, 0, 0, 255);
         SDL.RenderFillRect(_renderer, in background);
 
-        SDL.SetRenderDrawColor(_renderer, 181, 0, 0, 255);
+        var color = new SDL.FColor { R = 181f / 255f, A = 1 };
         foreach ((float startX, float startY, float endX, float endY) in PausedLabelStrokes)
         {
             RenderVectorLine(
-                offsetX + (labelX + startX) * scaleX,
-                offsetY + (labelY + startY) * scaleY,
-                offsetX + (labelX + endX) * scaleX,
-                offsetY + (labelY + endY) * scaleY,
-                beamWidth);
+                new Vector2(offsetX + (labelX + startX) * scaleX, offsetY + (labelY + startY) * scaleY),
+                new Vector2(offsetX + (labelX + endX) * scaleX, offsetY + (labelY + endY) * scaleY),
+                beamRadius,
+                color);
         }
     }
 
-    private void RenderVectorLine(
-        float startX,
-        float startY,
-        float endX,
-        float endY,
-        int beamWidth)
+    private void RenderVectorLine(Vector2 start, Vector2 end, float radius, SDL.FColor color)
     {
-        if (beamWidth == 1)
+        if (_beamTexture == nint.Zero)
         {
-            SDL.RenderLine(_renderer, startX, startY, endX, endY);
-            return;
+            _beamTexture = CreateBeamTexture();
         }
 
-        float deltaX = endX - startX;
-        float deltaY = endY - startY;
-        float length = MathF.Sqrt(deltaX * deltaX + deltaY * deltaY);
-        if (length < 0.001f)
-        {
-            RenderVectorCap(startX, startY, beamWidth);
-            return;
-        }
+        Vector2 delta = end - start;
+        float length = delta.Length();
+        Vector2 along = length < 0.001f ? new Vector2(radius, 0) : delta * (radius / length);
+        var across = new Vector2(-along.Y, along.X);
 
-        float normalX = -deltaY / length;
-        float normalY = deltaX / length;
-        float firstOffset = -(beamWidth - 1) * 0.5f;
-        for (int stroke = 0; stroke < beamWidth; stroke++)
-        {
-            float offset = firstOffset + stroke;
-            float offsetX = normalX * offset;
-            float offsetY = normalY * offset;
-            SDL.RenderLine(
-                _renderer,
-                startX + offsetX,
-                startY + offsetY,
-                endX + offsetX,
-                endY + offsetY);
-        }
-
-        RenderVectorCap(startX, startY, beamWidth);
-        RenderVectorCap(endX, endY, beamWidth);
+        // Stretch the spot's center column along the beam. Its two halves
+        // form round caps and meet as a single spot for a stationary beam.
+        Span<SDL.Vertex> vertices =
+        [
+            BeamVertex(start - along - across, color, 0, 0),
+            BeamVertex(start - along + across, color, 0, 1),
+            BeamVertex(start - across, color, 0.5f, 0),
+            BeamVertex(start + across, color, 0.5f, 1),
+            BeamVertex(end - across, color, 0.5f, 0),
+            BeamVertex(end + across, color, 0.5f, 1),
+            BeamVertex(end + along - across, color, 1, 0),
+            BeamVertex(end + along + across, color, 1, 1)
+        ];
+        ReadOnlySpan<int> triangles = [0, 1, 2, 1, 3, 2, 2, 3, 4, 3, 5, 4, 4, 5, 6, 5, 7, 6];
+        SDL.RenderGeometry(_renderer, _beamTexture, vertices, vertices.Length, triangles, triangles.Length);
     }
 
-    private void RenderVectorCap(float x, float y, int beamWidth)
+    private static SDL.Vertex BeamVertex(Vector2 point, SDL.FColor color, float u = 0, float v = 0) => new()
     {
-        float halfWidth = (beamWidth - 1) * 0.5f;
-        float firstOffset = -halfWidth;
-        for (int row = 0; row < beamWidth; row++)
+        Position = new SDL.FPoint { X = point.X, Y = point.Y },
+        Color = color,
+        TexCoord = new SDL.FPoint { X = u, Y = v }
+    };
+
+    private nint CreateBeamTexture()
+    {
+        const int size = 33;
+        const float center = (size - 1) * 0.5f;
+        float edge = MathF.Exp(-4f);
+        Span<uint> pixels = stackalloc uint[size * size];
+
+        // Approximate the focused CRT spot with a bright center and a smooth
+        // falloff. Zero coverage at the perimeter keeps the mesh edge invisible.
+        for (int y = 0; y < size; y++)
         {
-            float rowY = y + firstOffset + row;
-            SDL.RenderLine(_renderer, x - halfWidth, rowY, x + halfWidth, rowY);
+            float dy = (y - center) / center;
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x - center) / center;
+                float coverage = Math.Max(0, (MathF.Exp(-4f * (dx * dx + dy * dy)) - edge) / (1f - edge));
+                pixels[y * size + x] = 0xffffff00u | (uint)MathF.Round(255f * coverage);
+            }
         }
+
+        nint texture = SDL.CreateTexture(_renderer, SDL.PixelFormat.RGBA8888, SDL.TextureAccess.Static, size, size);
+        if (texture == nint.Zero)
+        {
+            throw new InvalidOperationException($"SDL beam texture creation failed: {SDL.GetError()}");
+        }
+
+        if (!SDL.UpdateTexture(texture, nint.Zero, MemoryMarshal.AsBytes(pixels), size * sizeof(uint))
+            || !SDL.SetTextureScaleMode(texture, SDL.ScaleMode.Linear)
+            || !SDL.SetTextureBlendMode(texture, SDL.BlendMode.Blend))
+        {
+            string error = SDL.GetError();
+            SDL.DestroyTexture(texture);
+            throw new InvalidOperationException($"SDL beam texture setup failed: {error}");
+        }
+
+        return texture;
     }
 
     private static void GetMonitorViewport(
@@ -665,6 +689,11 @@ public sealed class SdlVectorDisplay : IDisposable
         }
 
         SDL.DestroyAudioStream(_audioStream);
+        if (_beamTexture != nint.Zero)
+        {
+            SDL.DestroyTexture(_beamTexture);
+        }
+
         SDL.DestroyRenderer(_renderer);
         SDL.DestroyWindow(_window);
         SDL.Quit();

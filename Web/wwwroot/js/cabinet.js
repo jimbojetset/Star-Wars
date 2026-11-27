@@ -359,31 +359,32 @@ function paintVectors() {
     if (!latestVectors) return;
 
     const beamWidth = Math.max(1, height / 540);
-    if (bloom > 0) {
-        paintGlow(width, height, beamWidth, bloom);
-    }
+    paintBeamHalo(width, height, beamWidth, bloom);
 
     exposedBeamColors.clear();
-    strokeVectors(beam, width, height, beamWidth, 1 + 0.09 * bloom);
+    beam.globalAlpha = 0.86;
+    strokeVectors(beam, width, height, 0.75 * beamWidth, 1 + 0.09 * bloom);
+    beam.globalAlpha = 1;
 }
 
-function paintGlow(width, height, beamWidth, bloom) {
+function paintBeamHalo(width, height, beamWidth, bloom) {
     if (!glowCanvas) {
         glowCanvas = document.createElement("canvas");
         glow = glowCanvas.getContext("2d");
     }
 
-    const downsample = 2 * beamWidth;
+    // Bilinear upscaling feathers the beam. Overdrive spreads the same spot
+    // farther across the phosphor as the simulated focus drops.
+    const downsample = 1.35 * beamWidth;
     const glowWidth = Math.max(1, Math.round(width / downsample));
     const glowHeight = Math.max(1, Math.round(height / downsample));
     if (glowCanvas.width !== glowWidth) glowCanvas.width = glowWidth;
     if (glowCanvas.height !== glowHeight) glowCanvas.height = glowHeight;
     glow.clearRect(0, 0, glowWidth, glowHeight);
-    strokeVectors(glow, glowWidth, glowHeight, 1, 1);
+    strokeVectors(glow, glowWidth, glowHeight, 1 + 0.45 * bloom, 1);
 
-    beam.globalAlpha = 0.22 * bloom;
+    beam.globalAlpha = 0.4 + 0.12 * bloom;
     beam.drawImage(glowCanvas, 0, 0, width, height);
-    beam.globalAlpha = 1;
 }
 
 function strokeVectors(context, width, height, lineWidth, exposure) {
@@ -411,8 +412,13 @@ function strokeVectors(context, width, height, lineWidth, exposure) {
             context.beginPath();
             previousColor = color;
         }
-        context.moveTo(latestVectors[i] * scaleX, latestVectors[i + 1] * scaleY);
-        context.lineTo(latestVectors[i + 2] * scaleX, latestVectors[i + 3] * scaleY);
+        const startX = latestVectors[i] * scaleX;
+        const startY = latestVectors[i + 1] * scaleY;
+        const endX = latestVectors[i + 2] * scaleX;
+        const endY = latestVectors[i + 3] * scaleY;
+        context.moveTo(startX, startY);
+        // Some Canvas backends discard zero-length paths, including stationary AVG dots.
+        context.lineTo(startX === endX && startY === endY ? endX + 0.01 : endX, endY);
     }
     if (vectorLength !== 0) context.stroke();
 }
