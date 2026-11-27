@@ -11,7 +11,14 @@ let fieldWidth;
 let fieldHeight;
 let latestVectors;
 let vectorLength = 0;
+let vectorsChanged = false;
+let overdrivePeak = 0;
+let overdriveStarted = 0;
+let paintedBloom = 0;
+let glowCanvas;
+let glow;
 const beamColors = new Map();
+const exposedBeamColors = new Map();
 let audioContext;
 let audioNode;
 let audioStats;
@@ -21,7 +28,7 @@ export function initialize(cabinet, width, height, pcmRate) {
     beam = canvas.getContext("2d", { alpha: false });
     fieldWidth = width;
     fieldHeight = height;
-    new ResizeObserver(paintVectors).observe(canvas);
+    new ResizeObserver(() => paintVectors()).observe(canvas);
 
     const pauseButton = document.querySelector("#pause-game");
     const muteButton = document.querySelector("#mute-game");
@@ -118,6 +125,7 @@ export function initialize(cabinet, width, height, pcmRate) {
 
         try {
             generated += cabinet.invokeMethod("AdvanceFrame", elapsed, controls, yaw, pitch, audioRunning && !muted);
+            if (vectorsChanged || paintedBloom > 0) paintVectors();
         } catch (error) {
             resetTiming();
             showMessage(`Emulation stopped. ${error.message}`);
@@ -171,6 +179,8 @@ export function initialize(cabinet, width, height, pcmRate) {
         releaseControls();
         resetTiming();
         if (paused) {
+            overdrivePeak = 0;
+            if (paintedBloom > 0) paintVectors();
             saveNovram();
         } else if (audioContext && !muted) {
             audioContext.resume().catch(error => showMessage(`Audio unavailable. ${error.message}`));
@@ -311,14 +321,25 @@ export function loadNovram() {
     }
 }
 
-export function drawVectors(bytes, count) {
+export function drawVectors(bytes, count, overdriveStrength) {
     vectorLength = count * 5;
     const data = new Int32Array(bytes.buffer, bytes.byteOffset, vectorLength);
     if (!latestVectors || latestVectors.length < vectorLength) {
         latestVectors = new Int32Array(Math.max(vectorLength, (latestVectors?.length ?? 0) * 2));
     }
     latestVectors.set(data);
-    paintVectors();
+    vectorsChanged = true;
+
+    const now = performance.now();
+    if (overdriveStrength > 0 && overdriveStrength >= monitorBloom(now)) {
+        overdrivePeak = overdriveStrength;
+        overdriveStarted = now;
+    }
+}
+
+function monitorBloom(now) {
+    const recovery = Math.max(0, 1 - (now - overdriveStarted) / 140);
+    return overdrivePeak * recovery * recovery;
 }
 
 function paintVectors() {
@@ -329,35 +350,71 @@ function paintVectors() {
         canvas.height = height;
     }
 
-    beam.fillStyle = "black";
+    const bloom = monitorBloom(performance.now());
+    paintedBloom = bloom;
+    vectorsChanged = false;
+    const blackLevel = Math.round(14 * bloom);
+    beam.fillStyle = blackLevel === 0 ? "black" : `rgb(${blackLevel}, ${blackLevel}, ${blackLevel})`;
     beam.fillRect(0, 0, width, height);
     if (!latestVectors) return;
 
+    const beamWidth = Math.max(1, height / 540);
+    if (bloom > 0) {
+        paintGlow(width, height, beamWidth, bloom);
+    }
+
+    exposedBeamColors.clear();
+    strokeVectors(beam, width, height, beamWidth, 1 + 0.09 * bloom);
+}
+
+function paintGlow(width, height, beamWidth, bloom) {
+    if (!glowCanvas) {
+        glowCanvas = document.createElement("canvas");
+        glow = glowCanvas.getContext("2d");
+    }
+
+    // Upscaling this small beam image gives the halo a soft edge without
+    // running a canvas shadow for every group of vectors.
+    const downsample = 2 * beamWidth;
+    const glowWidth = Math.max(1, Math.round(width / downsample));
+    const glowHeight = Math.max(1, Math.round(height / downsample));
+    if (glowCanvas.width !== glowWidth) glowCanvas.width = glowWidth;
+    if (glowCanvas.height !== glowHeight) glowCanvas.height = glowHeight;
+    glow.clearRect(0, 0, glowWidth, glowHeight);
+    strokeVectors(glow, glowWidth, glowHeight, 1, 1);
+
+    beam.globalAlpha = 0.22 * bloom;
+    beam.drawImage(glowCanvas, 0, 0, width, height);
+    beam.globalAlpha = 1;
+}
+
+function strokeVectors(context, width, height, lineWidth, exposure) {
     const scaleX = width / (fieldWidth * 65536);
     const scaleY = height / (fieldHeight * 65536);
-    beam.lineWidth = Math.max(1, height / 540);
-    beam.lineCap = "round";
+    const colors = exposure === 1 ? beamColors : exposedBeamColors;
+    context.lineWidth = lineWidth;
+    context.lineCap = "round";
 
     let previousColor = -1;
     for (let i = 0; i < vectorLength; i += 5) {
         const color = latestVectors[i + 4] >>> 0;
         if (color !== previousColor) {
-            if (i !== 0) beam.stroke();
-            let cssColor = beamColors.get(color);
+            if (i !== 0) context.stroke();
+            let cssColor = colors.get(color);
             if (cssColor === undefined) {
-                const brightness = Math.sqrt((color >>> 24) / 255);
+                const brightness = Math.min(1, exposure * Math.sqrt((color >>> 24) / 255));
                 const red = Math.round(((color >>> 16) & 255) * brightness);
                 const green = Math.round(((color >>> 8) & 255) * brightness);
                 const blue = Math.round((color & 255) * brightness);
                 cssColor = `rgb(${red}, ${green}, ${blue})`;
-                beamColors.set(color, cssColor);
+                colors.set(color, cssColor);
             }
-            beam.strokeStyle = cssColor;
-            beam.beginPath();
+            context.strokeStyle = cssColor;
+            context.beginPath();
             previousColor = color;
         }
-        beam.moveTo(latestVectors[i] * scaleX, latestVectors[i + 1] * scaleY);
-        beam.lineTo(latestVectors[i + 2] * scaleX, latestVectors[i + 3] * scaleY);
+        context.moveTo(latestVectors[i] * scaleX, latestVectors[i + 1] * scaleY);
+        context.lineTo(latestVectors[i + 2] * scaleX, latestVectors[i + 3] * scaleY);
     }
-    if (vectorLength !== 0) beam.stroke();
+    if (vectorLength !== 0) context.stroke();
 }

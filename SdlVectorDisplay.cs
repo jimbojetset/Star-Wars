@@ -10,8 +10,6 @@ public sealed class SdlVectorDisplay : IDisposable
 {
     private const float BeamWidthReferenceHeight = 540f;
     private const float MonitorBloomFadeSeconds = 0.14f;
-    private const int MonitorOverdriveStartClocks = 48_000;
-    private const int MonitorOverdriveFullClocks = 74_000;
     private const float MonitorAspectRatio = 4f / 3f;
     private const float MouseYokeSensitivity = 1.5f;
     private const byte YokeCenter = 0x80;
@@ -434,11 +432,7 @@ public sealed class SdlVectorDisplay : IDisposable
             return 0;
         }
 
-        float strength = Math.Clamp(
-            (overdriveBeamClocks - (float)MonitorOverdriveStartClocks)
-                / (MonitorOverdriveFullClocks - MonitorOverdriveStartClocks),
-            0,
-            1);
+        float strength = AtariStarWarsAvg.GetOverdriveStrength(overdriveBeamClocks);
         float remaining = 0;
         if (_lastOverdriveStrength > 0)
         {

@@ -21,6 +21,8 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
     private const int MaximumStateClocks = 10_000_000;
     private const int MaximumVectors = 10_000;
     private const int OverdriveIntensityFloor = 192;
+    private const int OverdriveStartClocks = 48_000;
+    private const int OverdriveFullClocks = 74_000;
     private const int XCenter = (FieldWidth / 2) << 16;
     private const int YCenter = (FieldHeight / 2) << 16;
 
@@ -55,6 +57,9 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
     public int LastRunMasterClocks { get; private set; }
     public int LastOverdriveBeamClocks { get; private set; }
     public long RunCount { get; private set; }
+
+    public static float GetOverdriveStrength(int beamClocks) =>
+        Math.Clamp((beamClocks - (float)OverdriveStartClocks) / (OverdriveFullClocks - OverdriveStartClocks), 0, 1);
 
     public void LoadStateProm(ReadOnlySpan<byte> prom)
     {

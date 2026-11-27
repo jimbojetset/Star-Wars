@@ -140,10 +140,11 @@
             _browser!.InvokeVoid("queueAudio", MemoryMarshal.AsBytes(samples.AsSpan()).ToArray());
         }
 
-        if (machine.VectorGenerator.RunCount != _lastVectorRun)
+        AtariStarWarsAvg avg = machine.VectorGenerator;
+        if (avg.RunCount != _lastVectorRun)
         {
-            _lastVectorRun = machine.VectorGenerator.RunCount;
-            DrawVectors(machine.VectorGenerator.Vectors);
+            _lastVectorRun = avg.RunCount;
+            DrawVectors(avg.Vectors, AtariStarWarsAvg.GetOverdriveStrength(avg.LastOverdriveBeamClocks));
         }
 
         return samples.Length;
@@ -155,7 +156,7 @@
     [JSInvokable]
     public void ToggleSelfTest() => _machine!.SelfTestEnabled = !_machine.SelfTestEnabled;
 
-    private void DrawVectors(IReadOnlyList<VectorSegment> vectors)
+    private void DrawVectors(IReadOnlyList<VectorSegment> vectors, float overdriveStrength)
     {
         const int intsPerVector = 5;
         int bytesNeeded = vectors.Count * intsPerVector * sizeof(int);
@@ -175,7 +176,7 @@
             packed[offset++] = (vector.Intensity << 24) | (vector.Red << 16) | (vector.Green << 8) | vector.Blue;
         }
 
-        _browser!.InvokeVoid("drawVectors", _vectorBytes, vectors.Count);
+        _browser!.InvokeVoid("drawVectors", _vectorBytes, vectors.Count, overdriveStrength);
     }
 
     private static byte MoveAxis(byte position, bool negative, bool positive, double elapsed, double speed)
