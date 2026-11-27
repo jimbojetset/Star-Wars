@@ -7,3 +7,4 @@ Roms/*
 !Roms/.gitkeep
 .editorconfig
 .DS_Store
+.vscode
