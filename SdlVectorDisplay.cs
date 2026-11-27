@@ -579,8 +579,6 @@ public sealed class SdlVectorDisplay : IDisposable
         Vector2 along = length < 0.001f ? new Vector2(radius, 0) : delta * (radius / length);
         var across = new Vector2(-along.Y, along.X);
 
-        // Stretch the spot's center column along the beam. Its two halves
-        // form round caps and meet as a single spot for a stationary beam.
         Span<SDL.Vertex> vertices =
         [
             BeamVertex(start - along - across, color, 0, 0),
@@ -610,8 +608,6 @@ public sealed class SdlVectorDisplay : IDisposable
         float edge = MathF.Exp(-4f);
         Span<uint> pixels = stackalloc uint[size * size];
 
-        // Approximate the focused CRT spot with a bright center and a smooth
-        // falloff. Zero coverage at the perimeter keeps the mesh edge invisible.
         for (int y = 0; y < size; y++)
         {
             float dy = (y - center) / center;

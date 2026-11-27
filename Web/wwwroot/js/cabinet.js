@@ -373,8 +373,6 @@ function paintBeamHalo(width, height, beamWidth, bloom) {
         glow = glowCanvas.getContext("2d");
     }
 
-    // Bilinear upscaling feathers the beam. Overdrive spreads the same spot
-    // farther across the phosphor as the simulated focus drops.
     const downsample = 1.35 * beamWidth;
     const glowWidth = Math.max(1, Math.round(width / downsample));
     const glowHeight = Math.max(1, Math.round(height / downsample));
@@ -417,7 +415,6 @@ function strokeVectors(context, width, height, lineWidth, exposure) {
         const endX = latestVectors[i + 2] * scaleX;
         const endY = latestVectors[i + 3] * scaleY;
         context.moveTo(startX, startY);
-        // Some Canvas backends discard zero-length paths, including stationary AVG dots.
         context.lineTo(startX === endX && startY === endY ? endX + 0.01 : endX, endY);
     }
     if (vectorLength !== 0) context.stroke();
