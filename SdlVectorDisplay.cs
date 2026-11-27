@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using SDL3;
 using StarWars.Hardware;
@@ -7,6 +9,11 @@ namespace StarWars;
 public sealed class SdlVectorDisplay : IDisposable
 {
     private const float BeamWidthReferenceHeight = 540f;
+    private const float MonitorBloomFadeSeconds = 0.14f;
+    // Calibrated against the game’s AVG output. Ordinary bright scenes stay
+    // below these loads, while its overdrive pulses draw about 74,000 clocks.
+    private const int MonitorOverdriveStartClocks = 48_000;
+    private const int MonitorOverdriveFullClocks = 74_000;
     private const float MonitorAspectRatio = 4f / 3f;
     private const float MouseYokeSensitivity = 1.5f;
     private const byte YokeCenter = 0x80;
@@ -45,6 +52,8 @@ public sealed class SdlVectorDisplay : IDisposable
     private bool _rightShiftTriggerPressed;
     private bool _leftMouseTriggerPressed;
     private bool _rightMouseTriggerPressed;
+    private long _lastMonitorOverdrive;
+    private float _lastOverdriveStrength;
     private bool _disposed;
 
     public SdlVectorDisplay()
@@ -353,7 +362,9 @@ public sealed class SdlVectorDisplay : IDisposable
         machine.DiagnosticStepPressed = false;
     }
 
-    public void Render(IReadOnlyList<VectorSegment> vectors)
+    public void Render(IReadOnlyList<VectorSegment> vectors) => Render(vectors, 0);
+
+    public void Render(IReadOnlyList<VectorSegment> vectors, int overdriveBeamClocks)
     {
         ArgumentNullException.ThrowIfNull(vectors);
 
@@ -382,9 +393,23 @@ public sealed class SdlVectorDisplay : IDisposable
             1,
             8);
 
+        float bloom = GetMonitorBloom(overdriveBeamClocks);
+        if (bloom > 0)
+        {
+            var viewport = new SDL.Rect
+            {
+                X = (int)offsetX,
+                Y = (int)offsetY,
+                W = (int)viewportWidth,
+                H = (int)viewportHeight
+            };
+            RenderMonitorBloom(vectors, in viewport, offsetX, offsetY, scaleX, scaleY, beamWidth, bloom);
+        }
+
+        float exposure = 1f + 0.09f * bloom;
         foreach (VectorSegment vector in vectors)
         {
-            float brightness = MathF.Sqrt(vector.Intensity / 255f);
+            float brightness = Math.Min(1f, exposure * MathF.Sqrt(vector.Intensity / 255f));
             byte red = (byte)MathF.Round(vector.Red * brightness);
             byte green = (byte)MathF.Round(vector.Green * brightness);
             byte blue = (byte)MathF.Round(vector.Blue * brightness);
@@ -404,6 +429,121 @@ public sealed class SdlVectorDisplay : IDisposable
 
         SDL.RenderPresent(_renderer);
     }
+
+    private float GetMonitorBloom(int overdriveBeamClocks)
+    {
+        if (Paused)
+        {
+            _lastOverdriveStrength = 0;
+            return 0;
+        }
+
+        float strength = Math.Clamp(
+            (overdriveBeamClocks - (float)MonitorOverdriveStartClocks)
+                / (MonitorOverdriveFullClocks - MonitorOverdriveStartClocks),
+            0,
+            1);
+        float remaining = 0;
+        if (_lastOverdriveStrength > 0)
+        {
+            float recovery = Math.Max(
+                0,
+                1 - (float)Stopwatch.GetElapsedTime(_lastMonitorOverdrive).TotalSeconds / MonitorBloomFadeSeconds);
+            remaining = _lastOverdriveStrength * recovery * recovery;
+        }
+
+        if (strength >= remaining)
+        {
+            _lastOverdriveStrength = strength;
+            if (strength > 0)
+            {
+                _lastMonitorOverdrive = Stopwatch.GetTimestamp();
+            }
+        }
+
+        return Math.Max(strength, remaining);
+    }
+
+    private void RenderMonitorBloom(
+        IReadOnlyList<VectorSegment> vectors,
+        in SDL.Rect viewport,
+        float offsetX,
+        float offsetY,
+        float scaleX,
+        float scaleY,
+        int beamWidth,
+        float bloom)
+    {
+        // A little stray light lifts the black level across the face of the CRT.
+        var screen = new SDL.FRect { X = viewport.X, Y = viewport.Y, W = viewport.W, H = viewport.H };
+        byte blackLevel = (byte)MathF.Round(14f * bloom);
+        SDL.SetRenderDrawColor(_renderer, blackLevel, blackLevel, blackLevel, 255);
+        SDL.RenderFillRect(_renderer, in screen);
+
+        SDL.SetRenderClipRect(_renderer, in viewport);
+        SDL.SetRenderDrawBlendMode(_renderer, SDL.BlendMode.Blend);
+
+        // Taper the halo to zero around the beam and its end caps. Alpha
+        // blending keeps connected strokes from adding up to bright blocks.
+        float radius = 1.6f * beamWidth;
+        Span<SDL.Vertex> halo = stackalloc SDL.Vertex[12];
+        ReadOnlySpan<int> triangles =
+        [
+            0, 2, 3, 0, 3, 1,
+            1, 3, 4, 1, 4, 5, 1, 5, 6, 1, 6, 7,
+            0, 1, 7, 0, 7, 8,
+            0, 8, 9, 0, 9, 10, 0, 10, 11, 0, 11, 2
+        ];
+        foreach (VectorSegment vector in vectors)
+        {
+            float alpha = 0.18f * bloom * MathF.Sqrt(vector.Intensity / 255f);
+            if (alpha < 1f / 255f || (vector.Red | vector.Green | vector.Blue) == 0)
+            {
+                continue;
+            }
+
+            var start = new Vector2(offsetX + vector.StartX / 65536f * scaleX, offsetY + vector.StartY / 65536f * scaleY);
+            var end = new Vector2(offsetX + vector.EndX / 65536f * scaleX, offsetY + vector.EndY / 65536f * scaleY);
+            Vector2 delta = end - start;
+            float length = delta.Length();
+            Vector2 along = length < 0.001f ? new Vector2(radius, 0) : delta * (radius / length);
+            var across = new Vector2(-along.Y, along.X);
+            Vector2 diagonalA = (along + across) * 0.7071f;
+            Vector2 diagonalB = (along - across) * 0.7071f;
+
+            var color = new SDL.FColor
+            {
+                R = vector.Red / 255f,
+                G = vector.Green / 255f,
+                B = vector.Blue / 255f,
+                A = alpha
+            };
+
+            halo[0] = BloomVertex(start, color);
+            halo[1] = BloomVertex(end, color);
+            color.A = 0;
+            halo[2] = BloomVertex(start + across, color);
+            halo[3] = BloomVertex(end + across, color);
+            halo[4] = BloomVertex(end + diagonalA, color);
+            halo[5] = BloomVertex(end + along, color);
+            halo[6] = BloomVertex(end + diagonalB, color);
+            halo[7] = BloomVertex(end - across, color);
+            halo[8] = BloomVertex(start - across, color);
+            halo[9] = BloomVertex(start - diagonalA, color);
+            halo[10] = BloomVertex(start - along, color);
+            halo[11] = BloomVertex(start - diagonalB, color);
+            SDL.RenderGeometry(_renderer, nint.Zero, halo, halo.Length, triangles, triangles.Length);
+        }
+
+        SDL.SetRenderDrawBlendMode(_renderer, SDL.BlendMode.None);
+        SDL.SetRenderClipRect(_renderer, nint.Zero);
+    }
+
+    private static SDL.Vertex BloomVertex(Vector2 point, SDL.FColor color) => new()
+    {
+        Position = new SDL.FPoint { X = point.X, Y = point.Y },
+        Color = color
+    };
 
     private void RenderPausedLabel(
         float offsetX,

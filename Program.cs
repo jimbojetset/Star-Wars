@@ -55,7 +55,7 @@ try
             }
 
             display.QueueAudio(machine.Audio.DrainSamples());
-            display.Render(machine.VectorGenerator.Vectors);
+            display.Render(machine.VectorGenerator.Vectors, machine.VectorGenerator.LastOverdriveBeamClocks);
         }
     }
     finally

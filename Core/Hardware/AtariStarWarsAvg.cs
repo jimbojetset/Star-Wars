@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace StarWars.Hardware;
 
 public readonly record struct VectorSegment(
@@ -18,6 +20,7 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
     private const int StatePromSize = 0x100;
     private const int MaximumStateClocks = 10_000_000;
     private const int MaximumVectors = 10_000;
+    private const int OverdriveIntensityFloor = 192;
     private const int XCenter = (FieldWidth / 2) << 16;
     private const int YCenter = (FieldHeight / 2) << 16;
 
@@ -44,11 +47,13 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
     private int _beamX;
     private int _beamY;
     private bool _halted;
+    private int _overdriveBeamCharge;
 
     public IReadOnlyList<VectorSegment> Vectors => _vectors;
     public bool Done { get; private set; } = true;
     public int RemainingMasterClocks { get; private set; }
     public int LastRunMasterClocks { get; private set; }
+    public int LastOverdriveBeamClocks { get; private set; }
     public long RunCount { get; private set; }
 
     public void LoadStateProm(ReadOnlySpan<byte> prom)
@@ -83,6 +88,7 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
         _beamX = 0;
         _beamY = 0;
         LastRunMasterClocks = 0;
+        LastOverdriveBeamClocks = 0;
         RunCount = 0;
         _vectors.Clear();
         ResetGenerator();
@@ -113,9 +119,11 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
         _vectors.Clear();
         _beamX = _xPosition;
         _beamY = _yPosition;
+        _overdriveBeamCharge = 0;
 
         int masterClocks = RunStateMachine();
         LastRunMasterClocks = masterClocks;
+        LastOverdriveBeamClocks = _overdriveBeamCharge / (byte.MaxValue - OverdriveIntensityFloor);
         RemainingMasterClocks = masterClocks;
         RunCount++;
     }
@@ -303,7 +311,16 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
             _xPosition = unchecked(_xPosition + deltaX);
             _yPosition = unchecked(_yPosition - deltaY);
 
-            AddPoint(_xPosition, _yPosition, CalculateStarWarsIntensity());
+            byte intensity = CalculateStarWarsIntensity();
+            if (intensity > OverdriveIntensityFloor)
+            {
+                // The high-voltage supply sees the current of all active CRT
+                // guns for the duration of the vector, including stationary dots.
+                int guns = BitOperations.PopCount((uint)_color & 7u);
+                _overdriveBeamCharge += vectorClocks * guns * (intensity - OverdriveIntensityFloor);
+            }
+
+            AddPoint(_xPosition, _yPosition, intensity);
         }
         else if (OperationBit(2))
         {
