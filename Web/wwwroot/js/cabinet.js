@@ -100,8 +100,6 @@ export function initialize(cabinet, width, height, pcmRate) {
             return;
         }
 
-        // Pace the sound CPU against the clock that drains its PCM. The display
-        // can run at any refresh rate and the two host clocks can drift apart.
         const elapsed = audioTime !== undefined && lastAudioTime !== undefined
             ? audioTime - lastAudioTime : (now - lastFrame) / 1000;
         lastFrame = now;
@@ -335,12 +333,11 @@ function paintVectors() {
     beam.fillRect(0, 0, width, height);
     if (!latestVectors) return;
 
-    // The AVG coordinate range is stretched across a 4:3 monitor.
     const scaleX = width / (fieldWidth * 65536);
     const scaleY = height / (fieldHeight * 65536);
     beam.lineWidth = Math.max(1, height / 540);
     beam.lineCap = "round";
-    // Batch consecutive beams of the same intensity and colour in AVG order.
+
     let previousColor = -1;
     for (let i = 0; i < vectorLength; i += 5) {
         const color = latestVectors[i + 4] >>> 0;

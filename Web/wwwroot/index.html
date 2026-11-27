@@ -14,7 +14,6 @@
         async function startEmulator() {
             const status = document.getElementById("startup-status");
             try {
-                // Safari Lockdown Mode can make WebAssembly unavailable before Blazor starts.
                 await WebAssembly.compile(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
             } catch {
                 status.textContent = "WebAssembly is unavailable. Safari Lockdown Mode can block it. Use Brave or the desktop emulator to play.";

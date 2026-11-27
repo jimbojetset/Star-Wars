@@ -117,8 +117,6 @@ public sealed class StarWarsSoundMemory
 {
     public StarWarsSoundMemory()
     {
-        // The latch ranges are deliberately handler-backed: reads and writes
-        // have different meanings on the original sound board.
         AddressSpace.MapRead(0x0000, 0x0fff, _ => AddressSpace.UnmappedValue);
         AddressSpace.MapWrite(0x0000, 0x0fff, (_, _) => { });
 

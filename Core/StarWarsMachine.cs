@@ -437,8 +437,6 @@ public sealed class StarWarsMachine
         }
         else if (output == 5)
         {
-            // Q5 drives the active-low PRNGCLR signal. Power-on zero holds
-            // the LFSR clear until the main program writes a one to Q5.
             Mathbox.SetPrngReset(!high);
         }
         else if (output == 7)
@@ -458,8 +456,6 @@ public sealed class StarWarsMachine
 
     private void WriteSpeechControl(byte output, byte direction)
     {
-        // Inputs float high on the board, leaving both active-low TMS5220
-        // strobes inactive until the RIOT programs those pins as outputs.
         bool writeQ = (direction & 0x01) == 0 || (output & 0x01) != 0;
         bool readQ = (direction & 0x02) == 0 || (output & 0x02) != 0;
         Audio.Speech.SetControlLines(writeQ, readQ);
@@ -481,8 +477,6 @@ public sealed class StarWarsMachine
         SoundCpu.SetIrqLine(false);
         SoundCpu.SetFirqLine(false);
         SoundCpu.SetNmiLine(false);
-        // Reset the sound board at its current clock, keeping PCM already
-        // generated earlier in this emulation slice.
         Audio.ResetChips();
         SoundRiot.Reset();
         SoundRiot.PortAInput = 0x10;

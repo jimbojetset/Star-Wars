@@ -48,11 +48,11 @@ public sealed class AtariPokey
         _registers[register] = value;
         switch (register)
         {
-            case 9: // STIMER reloads all four audio dividers.
+            case 9: 
                 Array.Clear(_timerPhase);
                 Array.Clear(_output);
                 break;
-            case 15: // With both SKCTL reset bits low, the polynomial counters are held reset.
+            case 15: 
                 if ((value & 0x03) == 0)
                 {
                     ResetPolynomials();
@@ -151,8 +151,6 @@ public sealed class AtariPokey
             }
         }
 
-        // The high-pass switches discharge channel 1 from channel 3's timer,
-        // and channel 2 from channel 4's timer.
         if (channel == 2 && (audctl & 0x04) != 0)
         {
             _output[0] = false;

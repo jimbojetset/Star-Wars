@@ -382,8 +382,6 @@ public sealed class SdlVectorDisplay : IDisposable
             out float viewportWidth,
             out float viewportHeight);
 
-        // The AVG's 250 by 280 visible coordinates are deflected across a 4:3 CRT;
-        // treating those coordinates as square pixels makes circles tall and narrow.
         float scaleX = viewportWidth / AtariStarWarsAvg.FieldWidth;
         float scaleY = viewportHeight / AtariStarWarsAvg.FieldHeight;
         int beamWidth = Math.Clamp(
@@ -472,7 +470,6 @@ public sealed class SdlVectorDisplay : IDisposable
         int beamWidth,
         float bloom)
     {
-        // A little stray light lifts the black level across the face of the CRT.
         var screen = new SDL.FRect { X = viewport.X, Y = viewport.Y, W = viewport.W, H = viewport.H };
         byte blackLevel = (byte)MathF.Round(14f * bloom);
         SDL.SetRenderDrawColor(_renderer, blackLevel, blackLevel, blackLevel, 255);
@@ -481,8 +478,6 @@ public sealed class SdlVectorDisplay : IDisposable
         SDL.SetRenderClipRect(_renderer, in viewport);
         SDL.SetRenderDrawBlendMode(_renderer, SDL.BlendMode.Blend);
 
-        // Taper the halo to zero around the beam and its end caps. Alpha
-        // blending keeps connected strokes from adding up to bright blocks.
         float radius = 1.6f * beamWidth;
         Span<SDL.Vertex> halo = stackalloc SDL.Vertex[12];
         ReadOnlySpan<int> triangles =
@@ -613,8 +608,6 @@ public sealed class SdlVectorDisplay : IDisposable
                 endY + offsetY);
         }
 
-        // The physical beam has no flat line caps. Filling both endpoints also
-        // prevents pinholes where thick vectors meet at sharply different angles.
         RenderVectorCap(startX, startY, beamWidth);
         RenderVectorCap(endX, endY, beamWidth);
     }

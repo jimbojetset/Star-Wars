@@ -125,9 +125,6 @@ public sealed class M6809
             {
                 return AddCycles(1);
             }
-
-            // SYNC resumes for any interrupt request, even when the relevant
-            // mask bit prevents the processor from taking the vector.
             _syncWaiting = false;
         }
 

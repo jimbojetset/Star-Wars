@@ -51,8 +51,6 @@ class StarWarsPcm extends AudioWorkletProcessor {
                     break;
                 }
 
-                // Preserve the fractional position across messages if the
-                // device rate differs from the sound board's 48 kHz stream.
                 const first = this.samples[this.read];
                 const second = this.samples[(this.read + 1) & this.mask];
                 const sample = first + (second - first) * this.phase;

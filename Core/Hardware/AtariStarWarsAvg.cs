@@ -181,8 +181,6 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
 
             if (_halted)
             {
-                // HALT reaches the main-board done input before the state
-                // machine advances through its following eight-clock state.
                 return haltClock;
             }
         }
@@ -314,8 +312,6 @@ public sealed class AtariStarWarsAvg(AddressSpace memory)
             byte intensity = CalculateStarWarsIntensity();
             if (intensity > OverdriveIntensityFloor)
             {
-                // The high-voltage supply sees the current of all active CRT
-                // guns for the duration of the vector, including stationary dots.
                 int guns = BitOperations.PopCount((uint)_color & 7u);
                 _overdriveBeamCharge += vectorClocks * guns * (intensity - OverdriveIntensityFloor);
             }
