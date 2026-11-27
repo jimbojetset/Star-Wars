@@ -373,8 +373,6 @@ function paintGlow(width, height, beamWidth, bloom) {
         glow = glowCanvas.getContext("2d");
     }
 
-    // Upscaling this small beam image gives the halo a soft edge without
-    // running a canvas shadow for every group of vectors.
     const downsample = 2 * beamWidth;
     const glowWidth = Math.max(1, Math.round(width / downsample));
     const glowHeight = Math.max(1, Math.round(height / downsample));

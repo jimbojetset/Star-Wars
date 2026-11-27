@@ -22,8 +22,6 @@ public sealed class StarWarsMainMemory
         AddressSpace.MapRam(0x0000, 0x2fff);
         AddressSpace.MapRom(0x3000, 0x3fff);
 
-        // 0x4000-0x47ff is decoded by the main board's input, latch, AVG,
-        // watchdog, ADC, NOVRAM and Matrix Processor hardware.
         AddressSpace.MapRead(0x4000, 0x47ff, _ => AddressSpace.UnmappedValue);
         AddressSpace.MapWrite(0x4000, 0x47ff, (_, _) => { });
 

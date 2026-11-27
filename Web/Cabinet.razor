@@ -136,7 +136,6 @@
         float[] samples = machine.Audio.DrainSamples();
         if (playAudio && samples.Length != 0)
         {
-            // Blazor transfers byte[] as a Uint8Array. Keep the PCM in native Float32 format.
             _browser!.InvokeVoid("queueAudio", MemoryMarshal.AsBytes(samples.AsSpan()).ToArray());
         }
 

@@ -49,7 +49,7 @@ public sealed class StarWarsMachine
         SoundRiot.IrqChanged = SoundCpu.SetIrqLine;
         SoundRiot.PortAOutputChanged = WriteSpeechControl;
         SoundRiot.PortBOutputChanged = (output, _) => Audio.Speech.SetDataBus(output);
-        SoundRiot.PortAInput = 0x10; // Sound self-test inactive; /READY is supplied by the TMS5220.
+        SoundRiot.PortAInput = 0x10;
         Mathbox.SetPrngReset(true);
 
         MapMainBoard();
