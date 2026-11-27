@@ -10,8 +10,6 @@ public sealed class SdlVectorDisplay : IDisposable
 {
     private const float BeamWidthReferenceHeight = 540f;
     private const float MonitorBloomFadeSeconds = 0.14f;
-    // Calibrated against the game’s AVG output. Ordinary bright scenes stay
-    // below these loads, while its overdrive pulses draw about 74,000 clocks.
     private const int MonitorOverdriveStartClocks = 48_000;
     private const int MonitorOverdriveFullClocks = 74_000;
     private const float MonitorAspectRatio = 4f / 3f;
